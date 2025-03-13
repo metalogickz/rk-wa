@@ -1,0 +1,11 @@
+{
+    "ignore": [
+      "instances/**",
+      "uploads/**",
+      "logs/**",
+      "node_modules/**"
+    ],
+    "watch": [
+      "src/**"
+    ]
+  }

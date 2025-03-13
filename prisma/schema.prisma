@@ -1,0 +1,230 @@
+// Базовые настройки Prisma для MongoDB
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// Модель для пользователей
+model User {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  email     String     @unique
+  password  String // Хешированный пароль
+  firstName String
+  lastName  String?
+  apiKey    String     @unique // Ключ API для всех запросов пользователя
+  isAdmin   Boolean?    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  isActive  Boolean    @default(true)
+  instances Instance[] // Связь с инстансами
+
+  UsageLimit UsageLimit[]
+}
+
+// Модель для инстансов WhatsApp
+model Instance {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String?
+  userId      String  @db.ObjectId
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Настройки для Baileys
+  authState Json? // Сохраненное состояние аутентификации
+
+  // Настройки webhook
+  webhookUrl     String?
+  webhookEnabled Boolean @default(false)
+
+  // Статус подключения
+  status String  @default("disconnected") // disconnected, connected, qr_received
+  qrCode String? // Текущий QR-код, если есть
+
+  // Счетчики сообщений
+  sentMessages     Int @default(0)
+  receivedMessages Int @default(0)
+
+  credentials Json?
+  
+  // Последняя активность
+  lastActivity DateTime?
+
+  authCreatedAt    DateTime?
+  authExpiresAt    DateTime?
+  authRefreshToken String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Связь с сообщениями
+  messages Message[]
+
+  // Связь с настройками вебхуков
+  webhookSettings WebhookSettings?
+
+  // Лог активности инстанса
+  activityLogs ActivityLog[]
+
+  InstanceHealth InstanceHealth[]
+
+  InstanceUsage InstanceUsage[]
+
+  UsageLimit UsageLimit[]
+}
+
+model InstanceUsage {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId      String    @db.ObjectId
+  date            DateTime  @default(now())
+  messagesSent    Int       @default(0)
+  messagesReceived Int      @default(0)
+  mediaSent       Int       @default(0)
+  mediaReceived   Int       @default(0)
+  totalMediaSize  Int       @default(0)  // в байтах
+  apiCalls        Int       @default(0)
+  webhookSent     Int       @default(0)
+  memoryUsage     Int?      // в мегабайтах
+  cpuUsage        Float?    // процент использования
+  
+  instance        Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  
+  @@unique([instanceId, date], name: "instance_usage_date")
+}
+
+model UsageLimit {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId      String?   @db.ObjectId
+  userId          String?   @db.ObjectId
+  isDefault       Boolean   @default(false)
+  maxMessagesSent Int?
+  maxMessagesReceived Int?
+  maxMediaSent    Int?
+  maxMediaReceived Int?
+  maxMediaSize    Int?      // в байтах
+  maxApiCalls     Int?
+  maxWebhookCalls Int?
+  maxMemoryUsage  Int?      // в мегабайтах
+  maxCpuUsage     Float?    // процент использования
+  timeWindowHours Int       @default(24)  // период для расчета лимитов
+  
+  instance        Instance? @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Модель для настроек вебхуков
+model WebhookSettings {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId String   @unique @db.ObjectId
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  // Настройки для разных типов событий
+  notifyReceived Boolean @default(true)
+  notifySent     Boolean @default(true)
+  notifyDelivery Boolean @default(false)
+  notifyRead     Boolean @default(false)
+  notifyStatus   Boolean @default(true)
+
+  // Дополнительные заголовки
+  headers Json?
+
+  // Retry настройки
+  maxRetries    Int @default(3)
+  retryInterval Int @default(60000) // в миллисекундах
+
+  // Секретный ключ для подписи вебхуков
+  secret String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Модель для сообщений
+model Message {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId String   @db.ObjectId
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  // Данные сообщения
+  remoteJid   String // Номер получателя/отправителя
+  fromMe      Boolean // Флаг исходящего сообщения
+  messageType String // text, image, video, document...
+  content     String // Текст сообщения
+  messageId   String // ID сообщения из Baileys
+
+  // Медиа информация
+  hasMedia Boolean @default(false)
+  mediaUrl String? // URL для загрузки медиа
+  caption  String? // Подпись к медиа
+  mimeType String? // Тип медиа
+  fileName String? // Имя файла
+
+  // Статус сообщения
+  status          String // sent, delivered, read, failed
+  statusUpdatedAt DateTime?
+
+  // Метаданные
+  metadata Json? // Любые дополнительные данные
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([instanceId, remoteJid, createdAt])
+  @@index([instanceId, messageId])
+}
+
+// Модель для логов активности
+model ActivityLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId String   @db.ObjectId
+  instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  // Тип действия
+  action    String // connect, disconnect, qr_generated, message_sent, etc.
+  details   Json? // Детали действия
+  ipAddress String? // IP адрес, с которого выполнено действие
+  userAgent String? // Информация о клиенте
+
+  createdAt DateTime @default(now())
+
+  @@index([instanceId, action, createdAt])
+}
+
+// Модель для хранения webhook-логов
+model WebhookLog {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // К какому инстансу относится
+  instanceId String @db.ObjectId
+
+  // Информация о запросе
+  webhookUrl String
+  payload    Json
+  response   Json?
+  statusCode Int?
+
+  // Информация о доставке
+  success      Boolean
+  attempt      Int     @default(1)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([instanceId, createdAt])
+  @@index([success, attempt])
+}
+
+model InstanceHealth {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId String   @db.ObjectId
+  timestamp  DateTime @default(now())
+  alive      Boolean
+  latency    Int?
+  state      String?
+  error      String?
+
+  instance Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+}

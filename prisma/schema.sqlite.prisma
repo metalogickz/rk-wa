@@ -1,0 +1,178 @@
+// SQLite version of the Prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/sqlite-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("SQLITE_DATABASE_URL")
+}
+
+// Models adapted for SQLite
+
+model User {
+  id          String      @id @default(uuid())
+  email       String      @unique
+  password    String
+  firstName   String?
+  lastName    String?
+  apiKey      String      @unique
+  isAdmin     Boolean     @default(false)
+  instances   Instance[]
+  usageLimits UsageLimit[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("users")
+}
+
+model Instance {
+  id                String            @id @default(uuid())
+  name              String
+  description       String?
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            String            @default("disconnected")
+  qrCode            String?
+  webhookUrl        String?
+  webhookEnabled    Boolean           @default(false)
+  sentMessages      Int               @default(0)
+  receivedMessages  Int               @default(0)
+  credentials       String?
+  lastActivity      DateTime?
+  authCreatedAt     DateTime?
+  authExpiresAt     DateTime?
+  authRefreshToken  String?
+  webhookSettings   WebhookSettings?
+  messages          Message[]
+  activityLogs      ActivityLog[]
+  webhookLogs       WebhookLog[]
+  instanceUsage     InstanceUsage[]
+  usageLimits       UsageLimit[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@map("instances")
+}
+
+model WebhookSettings {
+  id             String    @id @default(uuid())
+  instanceId     String    @unique
+  instance       Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  notifyReceived Boolean   @default(true)
+  notifySent     Boolean   @default(true)
+  notifyDelivery Boolean   @default(false)
+  notifyRead     Boolean   @default(false)
+  maxRetries     Int       @default(3)
+  retryInterval  Int       @default(60000)
+  secret         String?
+  // SQLite doesn't support JSON, storing as text
+  headers        String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("webhook_settings")
+}
+
+model Message {
+  id              String    @id @default(uuid())
+  instanceId      String
+  instance        Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  remoteJid       String
+  fromMe          Boolean
+  messageType     String
+  content         String
+  messageId       String
+  hasMedia        Boolean   @default(false)
+  mediaUrl        String?
+  caption         String?
+  mimeType        String?
+  fileName        String?
+  status          String    @default("sent")
+  statusUpdatedAt DateTime?
+  // SQLite doesn't support JSON, storing as text
+  metadata        String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([instanceId, remoteJid])
+  @@index([instanceId, messageId])
+  @@map("messages")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  instanceId  String
+  instance    Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  action      String
+  // SQLite doesn't support JSON, storing as text
+  details     String?
+  createdAt   DateTime @default(now())
+
+  @@index([instanceId, action])
+  @@index([instanceId, createdAt])
+  @@map("activity_logs")
+}
+
+model WebhookLog {
+  id           String   @id @default(uuid())
+  instanceId   String
+  instance     Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  webhookUrl   String
+  // SQLite doesn't support JSON, storing as text
+  payload      String
+  response     String?
+  statusCode   Int?
+  success      Boolean
+  attempt      Int      @default(1)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  @@index([instanceId, createdAt])
+  @@map("webhook_logs")
+}
+
+model InstanceUsage {
+  id               String   @id @default(uuid())
+  instanceId       String
+  instance         Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  date             DateTime
+  messagesSent     Int      @default(0)
+  messagesReceived Int      @default(0)
+  mediaSent        Int      @default(0)
+  mediaReceived    Int      @default(0)
+  totalMediaSize   Int      @default(0)
+  apiCalls         Int      @default(0)
+  webhookSent      Int      @default(0)
+  memoryUsage      Int?
+  cpuUsage         Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([instanceId, date], name: "instance_usage_date")
+  @@index([instanceId, date])
+  @@map("instance_usage")
+}
+
+model UsageLimit {
+  id                String    @id @default(uuid())
+  userId            String?
+  user              User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instanceId        String?
+  instance          Instance? @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  isDefault         Boolean   @default(false)
+  maxMessagesSent   Int?
+  maxMessagesReceived Int?
+  maxMediaSent      Int?
+  maxMediaReceived  Int?
+  maxMediaSize      Int?
+  maxApiCalls       Int?
+  maxWebhookCalls   Int?
+  timeWindowHours   Int       @default(24)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("usage_limits")
+}

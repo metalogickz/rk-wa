@@ -1,0 +1,121 @@
+# WhatsApp 多实例 API 测试运行指南
+
+## 测试准备
+
+1. 安装测试依赖：
+   ```bash
+   npm install --save-dev jest supertest
+   ```
+
+2. 创建测试目录：
+   ```bash
+   mkdir -p test/uploads test/data
+   ```
+
+3. 在项目根目录中创建包含测试设置的 `.env.test` 文件：
+   ```bash
+   # 使用 env-test-file 文件中的内容
+   ```
+
+4. 确保已为两种数据库类型生成 Prisma 客户端：
+   ```bash
+   npm run prisma:generate:all
+   ```
+
+## 测试结构
+
+测试按功能组织：
+
+- `auth.test.js` - 身份验证测试（JWT 和 API 密钥）
+- `instance.test.js` - 实例管理测试
+- `whatsapp.test.js` - WhatsApp API 测试（发送消息等）
+- `stats.test.js` - 统计数据测试
+- `db-switch.test.js` - 数据库切换测试
+- `health.test.js` - 应用健康检查测试
+
+每个测试都会为两种数据库类型（MongoDB 和 SQLite）运行，以确保完整覆盖。
+
+## 运行测试
+
+### 运行所有测试
+
+```bash
+npm test
+```
+
+### 监视模式运行
+
+```bash
+npm run test:watch
+```
+
+### 仅运行 MongoDB 测试
+
+```bash
+npm run test:mongodb
+```
+
+### 仅运行 SQLite 测试
+
+```bash
+npm run test:sqlite
+```
+
+### 运行并生成代码覆盖率报告
+
+```bash
+npm run test:coverage
+```
+
+## 测试调试
+
+如果任何测试失败，您可以：
+
+1. 在 `test/jest.setup.js` 中取消注释控制台日志以显示详细信息
+2. 运行特定测试文件：
+   ```bash
+   npx jest test/auth.test.js
+   ```
+3. 使用 `--testNamePattern` 标志运行特定测试：
+   ```bash
+   npx jest --testNamePattern="should login with valid credentials"
+   ```
+
+## 测试特性
+
+1. 测试使用隔离的数据库，不会影响您的主数据库
+2. 在运行测试之前创建测试用户和实例
+3. 需要真实 WhatsApp 连接的测试将返回错误（这是预期行为）
+4. 为了完整测试，您可以为 WhatsApp 服务创建模拟
+
+## 模拟真实 WhatsApp 连接
+
+为了在没有真实 WhatsApp 连接的情况下进行更完整的测试，您可以为 `whatsapp-manager.service.js` 实现模拟：
+
+1. 创建一个带有功能模拟的 `__mocks__/whatsapp-manager.service.js` 文件：
+   ```javascript
+   module.exports = {
+     instances: new Map(),
+     initInstance: jest.fn().mockResolvedValue({}),
+     stopInstance: jest.fn().mockResolvedValue({}),
+     getInstanceStatus: jest.fn().mockReturnValue({ ready: true, status: 'connected', hasQr: false }),
+     getInstanceQrCode: jest.fn().mockReturnValue('mock-qr-code'),
+     sendMessage: jest.fn().mockResolvedValue({ id: 'mock-message-id' }),
+     sendMediaByUrl: jest.fn().mockResolvedValue({ id: 'mock-media-id' }),
+     sendMediaFromPath: jest.fn().mockResolvedValue({ id: 'mock-file-id' }),
+     getContacts: jest.fn().mockResolvedValue([{ id: '1234567890@s.whatsapp.net', name: 'Test Contact', number: '1234567890' }]),
+     logoutInstance: jest.fn().mockResolvedValue({ success: true }),
+     sendWebhook: jest.fn().mockResolvedValue({}),
+     checkSocketAlive: jest.fn().mockResolvedValue({ alive: true, state: 'open' }),
+     checkAllSockets: jest.fn().mockResolvedValue({ 'instance-id': { alive: true } }),
+     checkAuthExpiration: jest.fn().mockResolvedValue({})
+   };
+   ```
+
+2. 配置 Jest 自动使用模拟：
+   ```javascript
+   // 在 test/jest.setup.js 中添加：
+   jest.mock('../src/services/whatsapp-manager.service');
+   ```
+
+这将允许在没有真实 WhatsApp 连接的情况下更完整地测试 API 功能。

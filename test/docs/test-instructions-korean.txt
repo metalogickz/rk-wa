@@ -1,0 +1,121 @@
+# WhatsApp Multi-Instance API 테스트 실행 지침
+
+## 테스트 준비
+
+1. 테스트 의존성 설치:
+   ```bash
+   npm install --save-dev jest supertest
+   ```
+
+2. 테스트 디렉토리 생성:
+   ```bash
+   mkdir -p test/uploads test/data
+   ```
+
+3. 프로젝트 루트에 테스트 설정이 포함된 `.env.test` 파일 생성:
+   ```bash
+   # env-test-file의 내용을 사용하세요
+   ```
+
+4. 두 데이터베이스 유형 모두에 대한 Prisma 클라이언트가 생성되었는지 확인:
+   ```bash
+   npm run prisma:generate:all
+   ```
+
+## 테스트 구조
+
+테스트는 기능별 그룹으로 구성되어 있습니다:
+
+- `auth.test.js` - 인증 테스트(JWT 및 API 키)
+- `instance.test.js` - 인스턴스 관리 테스트
+- `whatsapp.test.js` - WhatsApp API 테스트(메시지 전송 등)
+- `stats.test.js` - 통계 테스트
+- `db-switch.test.js` - 데이터베이스 전환 테스트
+- `health.test.js` - 애플리케이션 상태 확인 테스트
+
+각 테스트는 완전한 커버리지를 보장하기 위해 두 가지 데이터베이스 유형(MongoDB 및 SQLite)에 대해 실행됩니다.
+
+## 테스트 실행
+
+### 모든 테스트 실행
+
+```bash
+npm test
+```
+
+### 변경 사항 감시 모드로 실행
+
+```bash
+npm run test:watch
+```
+
+### MongoDB만 대상으로 실행
+
+```bash
+npm run test:mongodb
+```
+
+### SQLite만 대상으로 실행
+
+```bash
+npm run test:sqlite
+```
+
+### 코드 커버리지 보고서와 함께 실행
+
+```bash
+npm run test:coverage
+```
+
+## 테스트 디버깅
+
+테스트가 실패하는 경우:
+
+1. 자세한 정보를 표시하기 위해 `test/jest.setup.js`에서 콘솔 로그의 주석을 해제
+2. 특정 테스트 파일 실행:
+   ```bash
+   npx jest test/auth.test.js
+   ```
+3. `--testNamePattern` 플래그로 특정 테스트 실행:
+   ```bash
+   npx jest --testNamePattern="should login with valid credentials"
+   ```
+
+## 테스트 특징
+
+1. 테스트는 메인 데이터베이스에 영향을 미치지 않는 격리된 데이터베이스를 사용합니다
+2. 테스트를 실행하기 전에 테스트 사용자 및 인스턴스가 생성됩니다
+3. 실제 WhatsApp 연결이 필요한 테스트는 오류를 반환합니다(이는 예상된 동작입니다)
+4. 완전한 테스트를 위해 WhatsApp 서비스에 대한 모의(mock)를 만들 수 있습니다
+
+## 실제 WhatsApp 연결 시뮬레이션
+
+실제 WhatsApp 연결 없이 더 완벽한 테스트를 위해 `whatsapp-manager.service.js`에 대한 모의를 구현할 수 있습니다:
+
+1. 기능 시뮬레이션이 포함된 `__mocks__/whatsapp-manager.service.js` 파일 생성:
+   ```javascript
+   module.exports = {
+     instances: new Map(),
+     initInstance: jest.fn().mockResolvedValue({}),
+     stopInstance: jest.fn().mockResolvedValue({}),
+     getInstanceStatus: jest.fn().mockReturnValue({ ready: true, status: 'connected', hasQr: false }),
+     getInstanceQrCode: jest.fn().mockReturnValue('mock-qr-code'),
+     sendMessage: jest.fn().mockResolvedValue({ id: 'mock-message-id' }),
+     sendMediaByUrl: jest.fn().mockResolvedValue({ id: 'mock-media-id' }),
+     sendMediaFromPath: jest.fn().mockResolvedValue({ id: 'mock-file-id' }),
+     getContacts: jest.fn().mockResolvedValue([{ id: '1234567890@s.whatsapp.net', name: 'Test Contact', number: '1234567890' }]),
+     logoutInstance: jest.fn().mockResolvedValue({ success: true }),
+     sendWebhook: jest.fn().mockResolvedValue({}),
+     checkSocketAlive: jest.fn().mockResolvedValue({ alive: true, state: 'open' }),
+     checkAllSockets: jest.fn().mockResolvedValue({ 'instance-id': { alive: true } }),
+     checkAuthExpiration: jest.fn().mockResolvedValue({})
+   };
+   ```
+
+2. Jest가 모의를 자동으로 사용하도록 구성:
+   ```javascript
+   // test/jest.setup.js에 추가:
+   jest.mock('../src/services/whatsapp-manager.service');
+   ```
+
+이렇게 하면 실제 WhatsApp 연결 없이 API 기능을 더 완벽하게 테스트할 수 있습니다.

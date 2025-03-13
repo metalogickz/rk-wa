@@ -1,0 +1,78 @@
+{
+  "name": "rk-whatsapp-api-service",
+  "version": "1.0.0",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "prisma:generate": "prisma generate",
+    "prisma:generate:sqlite": "prisma generate --schema=./prisma/schema.sqlite.prisma",
+    "prisma:generate:all": "npm run prisma:generate && npm run prisma:generate:sqlite",
+    "prisma:migrate:mongodb": "prisma db push",
+    "prisma:migrate:sqlite": "prisma migrate dev --schema=./prisma/schema.sqlite.prisma",
+    "prisma:studio": "prisma studio",
+    "prisma:studio:sqlite": "prisma studio --schema=./prisma/schema.sqlite.prisma",
+    "setup:sqlite": "npm run prisma:generate:sqlite && npm run prisma:migrate:sqlite",
+    "setup:mongodb": "npm run prisma:generate && npm run prisma:migrate:mongodb",
+    "setup:all": "npm run prisma:generate:all && npm run prisma:migrate:mongodb && npm run prisma:migrate:sqlite",
+    "test:prepare": "node test/prepare.js",
+    "test": "npm run test:prepare && jest --runInBand",
+    "test:watch": "npm run test:prepare && jest --watch --runInBand",
+    "test:mongodb": "npm run test:prepare && cross-env DATABASE_PROVIDER=mongodb jest --runInBand",
+    "test:sqlite": "npm run test:prepare && cross-env DATABASE_PROVIDER=sqlite jest --runInBand",
+    "test:coverage": "npm run test:prepare && jest --coverage --runInBand",
+    "test:single": "npm run test:prepare && jest",
+    "test:ci": "npm run test:prepare && jest --ci --reporters=default --reporters=jest-junit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "description": "",
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@prisma/client": "^6.4.1",
+    "@whiskeysockets/baileys": "^6.5.0",
+    "axios": "^1.5.0",
+    "bcrypt": "^5.1.1",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-jwt": "^8.5.1",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
+    "pino": "^8.15.1",
+    "prisma": "^6.4.1",
+    "proper-lockfile": "^4.1.2",
+    "qrcode-terminal": "^0.12.0",
+    "uuid": "^11.1.0",
+    "winston": "^3.10.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "eslint": "^9.22.0",
+    "jest": "^29.7.0",
+    "jest-junit": "^16.0.0",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testTimeout": 30000,
+    "coveragePathIgnorePatterns": [
+      "/node_modules/",
+      "/test/",
+      "/prisma/generated/"
+    ],
+    "setupFilesAfterEnv": [
+      "./test/jest.setup.js"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

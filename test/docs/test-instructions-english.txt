@@ -1,0 +1,121 @@
+# Instructions for Running Tests for WhatsApp Multi-Instance API
+
+## Test Preparation
+
+1. Install testing dependencies:
+   ```bash
+   npm install --save-dev jest supertest
+   ```
+
+2. Create a directory for tests:
+   ```bash
+   mkdir -p test/uploads test/data
+   ```
+
+3. Create a `.env.test` file in the root of the project with test settings:
+   ```bash
+   # Use the content from the env-test-file
+   ```
+
+4. Make sure you have generated Prisma clients for both database types:
+   ```bash
+   npm run prisma:generate:all
+   ```
+
+## Test Structure
+
+Tests are organized by functional groups:
+
+- `auth.test.js` - Authentication tests (JWT and API keys)
+- `instance.test.js` - Instance management tests
+- `whatsapp.test.js` - WhatsApp API tests (sending messages, etc.)
+- `stats.test.js` - Statistics tests
+- `db-switch.test.js` - Database switching tests
+- `health.test.js` - Application health check tests
+
+Each test runs for both database types (MongoDB and SQLite) to ensure complete coverage.
+
+## Running Tests
+
+### Run All Tests
+
+```bash
+npm test
+```
+
+### Run with Watch Mode
+
+```bash
+npm run test:watch
+```
+
+### Run for MongoDB Only
+
+```bash
+npm run test:mongodb
+```
+
+### Run for SQLite Only
+
+```bash
+npm run test:sqlite
+```
+
+### Run with Code Coverage Report
+
+```bash
+npm run test:coverage
+```
+
+## Debugging Tests
+
+If any test fails, you can:
+
+1. Uncomment console logs in `test/jest.setup.js` to display detailed information
+2. Run a specific test file:
+   ```bash
+   npx jest test/auth.test.js
+   ```
+3. Run a specific test with the `--testNamePattern` flag:
+   ```bash
+   npx jest --testNamePattern="should login with valid credentials"
+   ```
+
+## Testing Features
+
+1. Tests use isolated databases that do not affect your main database
+2. Test users and instances are created before running tests
+3. Tests requiring real WhatsApp connections will return errors (this is expected behavior)
+4. For full testing, you can create mocks for the WhatsApp service
+
+## Simulating Real WhatsApp Connections
+
+For more complete testing without real WhatsApp connections, you can implement mocks for `whatsapp-manager.service.js`:
+
+1. Create a file `__mocks__/whatsapp-manager.service.js` with functionality simulation:
+   ```javascript
+   module.exports = {
+     instances: new Map(),
+     initInstance: jest.fn().mockResolvedValue({}),
+     stopInstance: jest.fn().mockResolvedValue({}),
+     getInstanceStatus: jest.fn().mockReturnValue({ ready: true, status: 'connected', hasQr: false }),
+     getInstanceQrCode: jest.fn().mockReturnValue('mock-qr-code'),
+     sendMessage: jest.fn().mockResolvedValue({ id: 'mock-message-id' }),
+     sendMediaByUrl: jest.fn().mockResolvedValue({ id: 'mock-media-id' }),
+     sendMediaFromPath: jest.fn().mockResolvedValue({ id: 'mock-file-id' }),
+     getContacts: jest.fn().mockResolvedValue([{ id: '1234567890@s.whatsapp.net', name: 'Test Contact', number: '1234567890' }]),
+     logoutInstance: jest.fn().mockResolvedValue({ success: true }),
+     sendWebhook: jest.fn().mockResolvedValue({}),
+     checkSocketAlive: jest.fn().mockResolvedValue({ alive: true, state: 'open' }),
+     checkAllSockets: jest.fn().mockResolvedValue({ 'instance-id': { alive: true } }),
+     checkAuthExpiration: jest.fn().mockResolvedValue({})
+   };
+   ```
+
+2. Configure Jest to automatically use the mock:
+   ```javascript
+   // In test/jest.setup.js add:
+   jest.mock('../src/services/whatsapp-manager.service');
+   ```
+
+This will allow more complete testing of API functionality without real WhatsApp connections.
