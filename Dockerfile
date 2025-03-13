@@ -1,29 +1,25 @@
 FROM node:20-slim
 
-# Install latest Chrome to avoid compatibility issues
+# Установка необходимых зависимостей для baileys
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     ca-certificates \
     fonts-liberation \
-    libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
-    libc6 \
     libcairo2 \
     libcups2 \
     libdbus-1-3 \
     libexpat1 \
     libfontconfig1 \
     libgbm1 \
-    libgcc1 \
     libglib2.0-0 \
     libgtk-3-0 \
     libnspr4 \
     libnss3 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
-    libstdc++6 \
     libx11-6 \
     libx11-xcb1 \
     libxcb1 \
@@ -37,28 +33,33 @@ RUN apt-get update && apt-get install -y \
     libxrender1 \
     libxss1 \
     libxtst6 \
-    lsb-release \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+# Рабочая директория приложения
 WORKDIR /usr/src/app
 
-# Copy package files
+# Копирование файлов package.json и package-lock.json
 COPY package*.json ./
-COPY .npmrc ./
 
-# Install app dependencies
+# Установка зависимостей
 RUN npm install
 
-# Bundle app source
+# Генерация Prisma клиентов
+RUN npx prisma generate
+RUN npx prisma generate --schema=./prisma/schema.sqlite.prisma
+
+# Копирование остальных файлов проекта
 COPY . .
 
-# Create volume for auth data
-VOLUME ["/usr/src/app/.wwebjs_auth", "/usr/src/app/logs"]
+# Создание директорий для данных
+RUN mkdir -p instances uploads logs data
 
-# Expose the port
+# Настройка томов для хранения данных
+VOLUME ["/usr/src/app/instances", "/usr/src/app/uploads", "/usr/src/app/logs", "/usr/src/app/data"]
+
+# Порт приложения
 EXPOSE 3000
 
-# Start the application
+# Запуск приложения
 CMD [ "node", "src/app.js" ]
