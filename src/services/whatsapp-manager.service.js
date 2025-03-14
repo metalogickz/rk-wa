@@ -1,5 +1,5 @@
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
-const { PrismaClient } = require('@prisma/client');
+const dbConnector = require('../utils/db-connector');
 const path = require('path');
 const fs = require('fs');
 const logger = require('../utils/logger');
@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const qrcode = require('qrcode-terminal');
 const usageMonitor = require('./usage-monitor.service');
 
-const prisma = new PrismaClient();
+const prisma = dbConnector.getClient();
 
 class WhatsAppManager {
   constructor() {

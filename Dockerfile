@@ -45,15 +45,19 @@ COPY package*.json ./
 # Установка зависимостей
 RUN npm install
 
-# Генерация Prisma клиентов
-RUN npx prisma generate
-RUN npx prisma generate --schema=./prisma/schema.sqlite.prisma
+# Копирование папки prisma со схемами 
+COPY prisma ./prisma/
 
 # Копирование остальных файлов проекта
 COPY . .
 
+# Генерация Prisma клиентов
+RUN npx prisma generate
+RUN npx prisma generate --schema=./prisma/schema.sqlite.prisma
+
 # Создание директорий для данных
 RUN mkdir -p instances uploads logs data
+RUN chmod -R 777 data
 
 # Настройка томов для хранения данных
 VOLUME ["/usr/src/app/instances", "/usr/src/app/uploads", "/usr/src/app/logs", "/usr/src/app/data"]
@@ -61,5 +65,22 @@ VOLUME ["/usr/src/app/instances", "/usr/src/app/uploads", "/usr/src/app/logs", "
 # Порт приложения
 EXPOSE 3000
 
-# Запуск приложения
-CMD [ "node", "src/app.js" ]
+# Создаем скрипт для запуска, который будет инициализировать базу данных
+RUN echo '#!/bin/bash\n\
+# Создаем директорию для данных\n\
+mkdir -p /usr/src/app/data\n\
+chmod -R 777 /usr/src/app/data\n\
+\n\
+# Инициализируем базу данных SQLite\n\
+if [ ! -f "$SQLITE_DATABASE_URL" ] || [ ! -s "$SQLITE_DATABASE_URL" ]; then\n\
+  echo "Initializing SQLite database..."\n\
+  npx prisma db push --schema=./prisma/schema.sqlite.prisma --skip-generate --accept-data-loss\n\
+  echo "SQLite database initialized successfully!"\n\
+fi\n\
+\n\
+# Запускаем основное приложение\n\
+exec node src/app.js\n\
+' > /usr/src/app/start.sh && chmod +x /usr/src/app/start.sh
+
+# Запуск приложения через shell скрипт
+CMD ["/bin/bash", "/usr/src/app/start.sh"]
