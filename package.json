@@ -13,6 +13,7 @@
     "prisma:studio": "prisma studio",
     "prisma:studio:sqlite": "prisma studio --schema=./prisma/schema.sqlite.prisma",
     "setup:sqlite": "npm run prisma:generate:sqlite && npm run prisma:migrate:sqlite",
+    "sqlite:init": "node script/init-local-sqlite.js",
     "setup:mongodb": "npm run prisma:generate && npm run prisma:migrate:mongodb",
     "setup:all": "npm run prisma:generate:all && npm run prisma:migrate:mongodb && npm run prisma:migrate:sqlite",
     "test:prepare": "node test/prepare.js",

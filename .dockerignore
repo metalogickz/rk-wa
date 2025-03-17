@@ -4,6 +4,7 @@ logs
 instances
 uploads
 data
+.env
 .git
 .github
 .idea

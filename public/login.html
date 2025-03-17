@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход - WhatsApp API</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="navbar">
+    <div class="nav-container">
+      <div class="nav-title">WhatsApp API Manager</div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="card" style="max-width: 400px; margin: 40px auto;">
+      <h2 class="card-title text-center">Вход в систему</h2>
+      
+      <div id="alert-box" class="hidden"></div>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="email">Email:</label>
+          <input type="email" id="email" class="form-control" required autocomplete="email">
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Пароль:</label>
+          <input type="password" id="password" class="form-control" required autocomplete="current-password">
+        </div>
+        
+        <div class="form-group">
+          <button type="submit" class="btn" style="width: 100%;">Войти</button>
+        </div>
+      </form>
+      
+      <div class="text-center" style="margin-top: 20px;">
+        <p>Или</p>
+      </div>
+      
+      <div class="form-group" style="margin-top: 10px;">
+        <label for="api-key">API Key:</label>
+        <input type="text" id="api-key" class="form-control" placeholder="Введите ваш API ключ">
+      </div>
+      
+      <div class="form-group">
+        <button id="api-key-login" class="btn" style="width: 100%;">Войти по API ключу</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // Проверяем, есть ли сохраненный токен или API ключ
+      const token = localStorage.getItem('token');
+      const apiKey = localStorage.getItem('apiKey');
+      
+      if (token || apiKey) {
+        // Если пользователь уже авторизован, перенаправляем его на страницу инстансов
+        window.location.href = '/ui/instances';
+        return;
+      }
+      
+      const loginForm = document.getElementById('login-form');
+      const apiKeyLoginBtn = document.getElementById('api-key-login');
+      const alertBox = document.getElementById('alert-box');
+      
+      // Функция отображения ошибки
+      function showLoginAlert(message, type = 'danger') {
+        alertBox.className = `alert alert-${type}`;
+        alertBox.textContent = message;
+        alertBox.classList.remove('hidden');
+      }
+      
+      // Обработчик входа по email и паролю
+      loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        
+        try {
+          const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email, password })
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка входа');
+          }
+          
+          const data = await response.json();
+          
+          // Сохраняем данные для аутентификации
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          
+          // Перенаправляем на страницу инстансов
+          window.location.href = '/ui/instances';
+        } catch (error) {
+          showLoginAlert(error.message || 'Ошибка входа');
+        }
+      });
+      
+      // Обработчик входа по API ключу
+      apiKeyLoginBtn.addEventListener('click', async () => {
+        const apiKey = document.getElementById('api-key').value.trim();
+        
+        if (!apiKey) {
+          showLoginAlert('Пожалуйста, введите API ключ');
+          return;
+        }
+        
+        try {
+          // Пробуем получить информацию о пользователе с этим API ключом
+          const response = await fetch('/api/auth/me', {
+            headers: {
+              'x-api-key': apiKey
+            }
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Неверный API ключ');
+          }
+          
+          const userData = await response.json();
+          
+          // Сохраняем данные для аутентификации
+          localStorage.setItem('apiKey', apiKey);
+          localStorage.setItem('user', JSON.stringify(userData));
+          
+          // Перенаправляем на страницу инстансов
+          window.location.href = '/ui/instances';
+        } catch (error) {
+          showLoginAlert(error.message || 'Ошибка входа по API ключу');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

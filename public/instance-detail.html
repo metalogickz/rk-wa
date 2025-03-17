@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Детали инстанса - WhatsApp API</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+  <div class="navbar">
+    <div class="nav-container">
+      <div class="nav-title">WhatsApp API Manager</div>
+      <ul class="nav-links">
+        <li><a href="/ui/instances">Инстансы</a></li>
+        <li><a href="/ui/stats">Статистика</a></li>
+        <li><span id="user-info"></span> <a href="#" id="logout-btn">(Выйти)</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="mb-20">
+      <a href="/ui/instances" class="btn btn-secondary">&larr; Назад к списку</a>
+    </div>
+
+    <div id="loading" class="text-center">
+      <p>Загрузка данных инстанса...</p>
+    </div>
+
+    <div id="instance-details" class="hidden">
+      <div class="flex justify-between items-center mb-20">
+        <h1 id="instance-name">Название инстанса</h1>
+        <div>
+          <a id="edit-btn" href="#" class="btn btn-secondary" style="margin-right: 10px;">Изменить</a>
+          <button id="delete-btn" class="btn btn-danger">Удалить</button>
+        </div>
+      </div>
+
+      <div class="card mb-20">
+        <h2 class="card-title">Информация об инстансе</h2>
+        <div class="form-group">
+          <label>Статус:</label>
+          <div id="instance-status"></div>
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <div id="instance-description">-</div>
+        </div>
+        <div class="form-group">
+          <label>Webhook URL:</label>
+          <div id="instance-webhook">-</div>
+        </div>
+        <div class="form-group">
+          <label>Webhook активен:</label>
+          <div id="instance-webhook-enabled">-</div>
+        </div>
+        <div class="form-group">
+          <label>Создан:</label>
+          <div id="instance-created">-</div>
+        </div>
+        <div class="form-group">
+          <label>Последняя активность:</label>
+          <div id="instance-last-activity">-</div>
+        </div>
+      </div>
+
+      <div class="card mb-20" id="qr-section">
+        <h2 class="card-title">QR-код для подключения</h2>
+        <div id="qr-container" class="text-center">
+          <p>QR-код пока не доступен. Нажмите кнопку ниже, чтобы переподключить инстанс и получить новый QR-код.</p>
+          <div style="margin-top: 20px;">
+            <button id="reconnect-btn" class="btn">Переподключить</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-20">
+        <h2 class="card-title">Действия</h2>
+        <div class="flex">
+          <button id="reconnect-btn-alt" class="btn" style="margin-right: 10px;">Переподключить</button>
+          <button id="logout-instance-btn" class="btn btn-danger">Выйти из WhatsApp</button>
+        </div>
+      </div>
+
+      <div class="card mb-20">
+        <h2 class="card-title">Функции</h2>
+        <div class="flex">
+          <a id="chat-btn" href="#" class="btn" style="margin-right: 10px;">Мини-чат</a>
+          <a id="contacts-btn" href="#" class="btn" style="margin-right: 10px;">Контакты</a>
+          <a id="messages-btn" href="#" class="btn btn-secondary">История сообщений</a>
+        </div>
+      </div>
+
+      <div class="card mb-20">
+        <h2 class="card-title">Последние события</h2>
+        <div id="events-container">
+          <p>Загрузка событий...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const instanceId = getIdFromPath();
+      let instanceData = null;
+
+      // Элементы страницы
+      const loadingElement = document.getElementById('loading');
+      const instanceDetailsElement = document.getElementById('instance-details');
+      const nameElement = document.getElementById('instance-name');
+      const statusElement = document.getElementById('instance-status');
+      const descriptionElement = document.getElementById('instance-description');
+      const webhookElement = document.getElementById('instance-webhook');
+      const webhookEnabledElement = document.getElementById('instance-webhook-enabled');
+      const createdElement = document.getElementById('instance-created');
+      const lastActivityElement = document.getElementById('instance-last-activity');
+      const qrContainer = document.getElementById('qr-container');
+      const editBtn = document.getElementById('edit-btn');
+      const deleteBtn = document.getElementById('delete-btn');
+      const reconnectBtn = document.getElementById('reconnect-btn');
+      const reconnectBtnAlt = document.getElementById('reconnect-btn-alt');
+      const logoutInstanceBtn = document.getElementById('logout-instance-btn');
+      const eventsContainer = document.getElementById('events-container');
+
+      document.getElementById('chat-btn').href = `/instance/${instanceId}/chat`;
+      document.getElementById('contacts-btn').href = `/instance/${instanceId}/contacts`;
+      document.getElementById('messages-btn').href = `/instance/${instanceId}/messages`;
+
+      try {
+        // Загружаем данные инстанса
+        instanceData = await fetchAPI(`/instances/${instanceId}`);
+
+        // Устанавливаем URL для кнопки редактирования
+        editBtn.href = `/instance/edit/${instanceId}`;
+
+        // Заполняем данные
+        nameElement.textContent = instanceData.name;
+        statusElement.innerHTML = getStatusBadgeHTML(instanceData.status);
+        descriptionElement.textContent = instanceData.description || '-';
+        webhookElement.textContent = instanceData.webhookUrl || 'Не настроен';
+        webhookEnabledElement.textContent = instanceData.webhookEnabled ? 'Да' : 'Нет';
+        createdElement.textContent = formatDate(instanceData.createdAt);
+        lastActivityElement.textContent = instanceData.lastActivity
+          ? formatDate(instanceData.lastActivity)
+          : 'Нет данных';
+
+        // Скрываем загрузку и показываем детали
+        loadingElement.classList.add('hidden');
+        instanceDetailsElement.classList.remove('hidden');
+
+        // Проверяем наличие QR-кода
+        await checkQrCode();
+
+        // Загружаем последние события
+        await loadEvents();
+
+        // Настраиваем обработчики событий
+        setupEventHandlers();
+
+        // Задаем периодическое обновление QR-кода и статуса
+        setInterval(async () => {
+          await checkStatus();
+          await checkQrCode();
+        }, 5000);
+
+        // Периодическое обновление событий
+        setInterval(loadEvents, 10000);
+      } catch (error) {
+        loadingElement.classList.add('hidden');
+        showAlert(`Ошибка при загрузке данных инстанса: ${error.message}`, 'danger');
+      }
+
+      // Функция для проверки статуса инстанса
+      async function checkStatus() {
+        try {
+          const statusData = await fetchAPI(`/whatsapp/${instanceId}/status`);
+
+          // Обновляем статус только если он изменился
+          if (statusData.status !== instanceData.status) {
+            instanceData.status = statusData.status;
+            statusElement.innerHTML = getStatusBadgeHTML(statusData.status);
+          }
+        } catch (error) {
+          console.error('Ошибка при проверке статуса:', error);
+        }
+      }
+
+      // Функция для проверки QR-кода
+      async function checkQrCode() {
+        try {
+          // Проверяем статус, если уже подключен - не запрашиваем QR
+          if (instanceData.status === 'connected') {
+            qrContainer.innerHTML = `
+              <div class="alert alert-success">
+                <p>Инстанс подключен к WhatsApp. QR-код не требуется.</p>
+              </div>
+            `;
+            return;
+          }
+
+          // Запрашиваем QR-код
+          const response = await fetch(`/api/whatsapp/${instanceId}/qr`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'x-api-key': localStorage.getItem('apiKey')
+            }
+          });
+
+          if (!response.ok) {
+            if (response.status === 404) {
+              qrContainer.innerHTML = `
+                <p>QR-код пока не доступен. Нажмите кнопку ниже, чтобы переподключить инстанс и получить новый QR-код.</p>
+                <div style="margin-top: 20px;">
+                  <button id="reconnect-btn-qr" class="btn">Переподключить</button>
+                </div>
+              `;
+
+              // Добавляем обработчик для кнопки переподключения
+              document.getElementById('reconnect-btn-qr').addEventListener('click', reconnectInstance);
+
+              return;
+            }
+            throw new Error('QR-код недоступен');
+          }
+
+          const data = await response.json();
+
+          if (data.qrCode) {
+            qrContainer.innerHTML = `
+              <div class="qr-container">
+                <img src="data:image/png;base64,${data.qrCode}" alt="QR Code" class="qr-image">
+              </div>
+              <p>Отсканируйте этот QR-код через приложение WhatsApp на вашем телефоне, чтобы подключить инстанс.</p>
+            `;
+          } else {
+            qrContainer.innerHTML = `
+              <p>QR-код пока не доступен. Инстанс находится в состоянии "${instanceData.status}".</p>
+              <div style="margin-top: 20px;">
+                <button id="reconnect-btn-qr" class="btn">Переподключить</button>
+              </div>
+            `;
+
+            // Добавляем обработчик для кнопки переподключения
+            document.getElementById('reconnect-btn-qr').addEventListener('click', reconnectInstance);
+          }
+        } catch (error) {
+          console.error('Ошибка при проверке QR-кода:', error);
+          qrContainer.innerHTML = `
+            <div class="alert alert-danger">
+              <p>Ошибка при загрузке QR-кода: ${error.message}</p>
+            </div>
+            <div style="margin-top: 20px;">
+              <button id="reconnect-btn-qr" class="btn">Переподключить</button>
+            </div>
+          `;
+
+          // Добавляем обработчик для кнопки переподключения
+          document.getElementById('reconnect-btn-qr').addEventListener('click', reconnectInstance);
+        }
+      }
+
+      // Функция для загрузки последних событий
+      async function loadEvents() {
+        try {
+          // Запрашиваем последние события
+          const data = await fetchAPI(`/instances/${instanceId}/events?limit=10`);
+
+          if (!data.events || data.events.length === 0) {
+            eventsContainer.innerHTML = '<p>Нет событий для отображения.</p>';
+            return;
+          }
+
+          // Формируем HTML с событиями
+          let eventsHtml = '<table><thead><tr><th>Тип события</th><th>Дата</th><th>Детали</th></tr></thead><tbody>';
+
+          data.events.forEach(event => {
+            // Форматируем тип события
+            let eventType = event.type;
+            switch (event.type) {
+              case 'message_received':
+                eventType = 'Получено сообщение';
+                break;
+              case 'message_sent':
+                eventType = 'Отправлено сообщение';
+                break;
+              case 'instance_created':
+                eventType = 'Инстанс создан';
+                break;
+              case 'instance_updated':
+                eventType = 'Инстанс обновлен';
+                break;
+              case 'instance_reconnected':
+                eventType = 'Инстанс переподключен';
+                break;
+              case 'instance_logout':
+                eventType = 'Выход из WhatsApp';
+                break;
+              case 'instance_stopped':
+                eventType = 'Инстанс остановлен';
+                break;
+            }
+
+            // Формируем детали события
+            let details = '-';
+            if (event.type === 'message_received' || event.type === 'message_sent') {
+              details = `От: ${event.data.from || '-'}<br>Сообщение: ${event.data.body || '-'}`;
+            } else if (event.data && event.data.details) {
+              details = JSON.stringify(event.data.details);
+            }
+
+            eventsHtml += `
+              <tr>
+                <td>${eventType}</td>
+                <td>${formatDate(event.timestamp)}</td>
+                <td>${details}</td>
+              </tr>
+            `;
+          });
+
+          eventsHtml += '</tbody></table>';
+          eventsContainer.innerHTML = eventsHtml;
+        } catch (error) {
+          console.error('Ошибка при загрузке событий:', error);
+          eventsContainer.innerHTML = `
+            <div class="alert alert-danger">
+              <p>Ошибка при загрузке событий: ${error.message}</p>
+            </div>
+          `;
+        }
+      }
+
+      // Функция для переподключения инстанса
+      async function reconnectInstance() {
+        try {
+          // Отображаем индикатор загрузки
+          qrContainer.innerHTML = '<p>Переподключение инстанса...</p>';
+
+          // Отправляем запрос на переподключение
+          const data = await fetchAPI(`/instances/${instanceId}/reconnect`, {
+            method: 'POST'
+          });
+
+          // Показываем сообщение об успехе
+          showAlert('Инстанс успешно переподключен. Ожидайте появления QR-кода.', 'success');
+
+          // Обновляем статус и QR-код
+          setTimeout(async () => {
+            await checkStatus();
+            await checkQrCode();
+          }, 1000);
+        } catch (error) {
+          showAlert(`Ошибка при переподключении инстанса: ${error.message}`, 'danger');
+        }
+      }
+
+      // Функция для выхода из WhatsApp
+      async function logoutInstance() {
+        if (!confirm('Вы уверены, что хотите выйти из WhatsApp? Потребуется повторное сканирование QR-кода.')) {
+          return;
+        }
+
+        try {
+          // Отправляем запрос на выход
+          const data = await fetchAPI(`/instances/${instanceId}/logout`, {
+            method: 'POST'
+          });
+
+          // Показываем сообщение об успехе
+          showAlert('Успешный выход из WhatsApp.', 'success');
+
+          // Обновляем статус и QR-код
+          setTimeout(async () => {
+            await checkStatus();
+            await checkQrCode();
+          }, 1000);
+        } catch (error) {
+          showAlert(`Ошибка при выходе из WhatsApp: ${error.message}`, 'danger');
+        }
+      }
+
+      // Функция для удаления инстанса
+      async function deleteInstance() {
+        if (!confirm('Вы уверены, что хотите удалить этот инстанс? Это действие невозможно отменить.')) {
+          return;
+        }
+
+        try {
+          // Отправляем запрос на удаление
+          await fetchAPI(`/instances/${instanceId}`, {
+            method: 'DELETE'
+          });
+
+          // Показываем сообщение об успехе
+          showAlert('Инстанс успешно удален.', 'success');
+
+          // Перенаправляем на страницу со списком инстансов
+          setTimeout(() => {
+            window.location.href = '/ui/instances';
+          }, 1000);
+        } catch (error) {
+          showAlert(`Ошибка при удалении инстанса: ${error.message}`, 'danger');
+        }
+      }
+
+      // Настройка обработчиков событий
+      function setupEventHandlers() {
+        // Кнопка переподключения
+        reconnectBtn.addEventListener('click', reconnectInstance);
+        reconnectBtnAlt.addEventListener('click', reconnectInstance);
+
+        // Кнопка выхода из WhatsApp
+        logoutInstanceBtn.addEventListener('click', logoutInstance);
+
+        // Кнопка удаления инстанса
+        deleteBtn.addEventListener('click', deleteInstance);
+      }
+    });
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Инстансы WhatsApp - WhatsApp API</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="navbar">
+    <div class="nav-container">
+      <div class="nav-title">WhatsApp API Manager</div>
+      <ul class="nav-links">
+        <li><a href="/ui/instances">Инстансы</a></li>
+        <li><a href="/ui/stats">Статистика</a></li>
+        <li><span id="user-info"></span> <a href="#" id="logout-btn">(Выйти)</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="flex justify-between items-center mb-20">
+      <h1>Инстансы WhatsApp</h1>
+      <a href="/ui/instance/create" class="btn">Создать новый инстанс</a>
+    </div>
+
+    <div id="instances-container" class="card">
+      <div id="loading" class="text-center">
+        <p>Загрузка инстансов...</p>
+      </div>
+      
+      <div id="instances-list" class="hidden">
+        <table>
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Описание</th>
+              <th>Статус</th>
+              <th>Последняя активность</th>
+              <th>Действия</th>
+            </tr>
+          </thead>
+          <tbody id="instances-table-body"></tbody>
+        </table>
+      </div>
+      
+      <div id="no-instances" class="text-center hidden">
+        <p>У вас пока нет инстансов. Создайте новый инстанс, чтобы начать работу.</p>
+        <div style="margin-top: 20px;">
+          <a href="/ui/instance/create" class="btn">Создать инстанс</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const instancesContainer = document.getElementById('instances-container');
+      const loadingElement = document.getElementById('loading');
+      const instancesList = document.getElementById('instances-list');
+      const noInstancesElement = document.getElementById('no-instances');
+      const instancesTableBody = document.getElementById('instances-table-body');
+      
+      try {
+        // Загружаем список инстансов
+        const data = await fetchAPI('/instances');
+        const instances = data.instances || [];
+        
+        // Скрываем загрузку
+        loadingElement.classList.add('hidden');
+        
+        if (instances.length === 0) {
+          // Если инстансов нет
+          noInstancesElement.classList.remove('hidden');
+        } else {
+          // Если есть инстансы, отображаем их
+          instancesList.classList.remove('hidden');
+          
+          // Заполняем таблицу
+          instances.forEach(instance => {
+            const tr = document.createElement('tr');
+            
+            // Форматируем последнюю активность
+            const lastActivity = instance.lastActivity 
+              ? formatDate(instance.lastActivity)
+              : 'Нет данных';
+            
+            // HTML для строки таблицы
+            tr.innerHTML = `
+              <td><a href="/ui/instance/${instance.id}">${instance.name}</a></td>
+              <td>${instance.description || '-'}</td>
+              <td>${getStatusBadgeHTML(instance.status)}</td>
+              <td>${lastActivity}</td>
+              <td>
+                <div class="flex">
+                  <a href="/ui/instance/${instance.id}" class="btn" style="margin-right: 5px;">Детали</a>
+                  <a href="/ui/instance/edit/${instance.id}" class="btn btn-secondary" style="margin-right: 5px;">Изменить</a>
+                  <button class="btn btn-danger delete-btn" data-id="${instance.id}">Удалить</button>
+                </div>
+              </td>
+            `;
+            
+            instancesTableBody.appendChild(tr);
+          });
+          
+          // Добавляем обработчики для кнопок удаления
+          document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+              const instanceId = e.target.getAttribute('data-id');
+              
+              if (confirm('Вы уверены, что хотите удалить этот инстанс? Это действие невозможно отменить.')) {
+                try {
+                  await fetchAPI(`/instances/${instanceId}`, { method: 'DELETE' });
+                  showAlert('Инстанс успешно удален', 'success');
+                  // Перезагружаем страницу для обновления списка
+                  setTimeout(() => window.location.reload(), 1000);
+                } catch (error) {
+                  showAlert(`Ошибка при удалении инстанса: ${error.message}`, 'danger');
+                }
+              }
+            });
+          });
+        }
+      } catch (error) {
+        loadingElement.classList.add('hidden');
+        showAlert(`Ошибка при загрузке инстансов: ${error.message}`, 'danger');
+      }
+    });
+  </script>
+</body>
+</html>

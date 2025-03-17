@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Статистика - WhatsApp API</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="navbar">
+    <div class="nav-container">
+      <div class="nav-title">WhatsApp API Manager</div>
+      <ul class="nav-links">
+        <li><a href="/instances">Инстансы</a></li>
+        <li><a href="/stats">Статистика</a></li>
+        <li><span id="user-info"></span> <a href="#" id="logout-btn">(Выйти)</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container">
+    <h1 class="mb-20">Статистика использования</h1>
+
+    <div id="loading" class="text-center">
+      <p>Загрузка данных статистики...</p>
+    </div>
+
+    <div id="stats-container" class="hidden">
+      <div class="card mb-20">
+        <h2 class="card-title">Общая статистика</h2>
+        <div class="flex justify-between">
+          <div>
+            <label for="period">Период:</label>
+            <select id="period" class="form-control">
+              <option value="week">Неделя</option>
+              <option value="month" selected>Месяц</option>
+              <option value="year">Год</option>
+              <option value="all">Все время</option>
+            </select>
+          </div>
+          <button id="refresh-btn" class="btn">Обновить</button>
+        </div>
+
+        <div class="form-group" id="total-stats">
+          <!-- Здесь будет общая статистика -->
+        </div>
+      </div>
+
+      <div class="card mb-20">
+        <h2 class="card-title">Статистика по инстансам</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Инстанс</th>
+              <th>Отправлено</th>
+              <th>Получено</th>
+              <th>Медиа отправлено</th>
+              <th>Медиа получено</th>
+              <th>API вызовы</th>
+              <th>Вебхуки</th>
+            </tr>
+          </thead>
+          <tbody id="instances-stats-body">
+            <!-- Здесь будет статистика по инстансам -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const loadingElement = document.getElementById('loading');
+      const statsContainer = document.getElementById('stats-container');
+      const totalStatsElement = document.getElementById('total-stats');
+      const instancesStatsBody = document.getElementById('instances-stats-body');
+      const periodSelect = document.getElementById('period');
+      const refreshBtn = document.getElementById('refresh-btn');
+      
+      // Загружаем статистику при загрузке страницы
+      await loadStats();
+      
+      // Обработчик для обновления статистики при изменении периода
+      refreshBtn.addEventListener('click', loadStats);
+      
+      async function loadStats() {
+        try {
+          loadingElement.classList.remove('hidden');
+          statsContainer.classList.add('hidden');
+          
+          const period = periodSelect.value;
+          
+          // Загружаем общую статистику
+          const userStatsData = await fetchAPI(`/stats/user?period=${period}`);
+          
+          // Отображаем общую статистику
+          const totalStats = userStatsData.total;
+          
+          totalStatsElement.innerHTML = `
+            <div class="flex justify-between">
+              <div class="form-group">
+                <label>Всего инстансов:</label>
+                <div>${totalStats.instanceCount || 0}</div>
+              </div>
+              
+              <div class="form-group">
+                <label>Всего сообщений отправлено:</label>
+                <div>${totalStats.messagesSent || 0}</div>
+              </div>
+              
+              <div class="form-group">
+                <label>Всего сообщений получено:</label>
+                <div>${totalStats.messagesReceived || 0}</div>
+              </div>
+            </div>
+            
+            <div class="flex justify-between">
+              <div class="form-group">
+                <label>Медиа отправлено:</label>
+                <div>${totalStats.mediaSent || 0}</div>
+              </div>
+              
+              <div class="form-group">
+                <label>Медиа получено:</label>
+                <div>${totalStats.mediaReceived || 0}</div>
+              </div>
+              
+              <div class="form-group">
+                <label>API вызовы:</label>
+                <div>${totalStats.apiCalls || 0}</div>
+              </div>
+              
+              <div class="form-group">
+                <label>Вебхук вызовы:</label>
+                <div>${totalStats.webhookSent || 0}</div>
+              </div>
+            </div>
+          `;
+          
+          // Отображаем статистику по инстансам
+          instancesStatsBody.innerHTML = '';
+          
+          if (userStatsData.instances && userStatsData.instances.length > 0) {
+            userStatsData.instances.forEach(instance => {
+              const tr = document.createElement('tr');
+              tr.innerHTML = `
+                <td><a href="/instance/${instance.instanceId}">${instance.name}</a></td>
+                <td>${instance.messagesSent || 0}</td>
+                <td>${instance.messagesReceived || 0}</td>
+                <td>${instance.mediaSent || 0}</td>
+                <td>${instance.mediaReceived || 0}</td>
+                <td>${instance.apiCalls || 0}</td>
+                <td>${instance.webhookSent || 0}</td>
+              `;
+              instancesStatsBody.appendChild(tr);
+            });
+          } else {
+            const tr = document.createElement('tr');
+            tr.innerHTML = '<td colspan="7" class="text-center">Нет данных для отображения</td>';
+            instancesStatsBody.appendChild(tr);
+          }
+          
+          // Скрываем загрузку и показываем статистику
+          loadingElement.classList.add('hidden');
+          statsContainer.classList.remove('hidden');
+        } catch (error) {
+          loadingElement.classList.add('hidden');
+          showAlert(`Ошибка при загрузке статистики: ${error.message}`, 'danger');
+        }
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+const dbConnector = require('../utils/db-connector');
 const instanceService = require('../services/instance.service');
 const logger = require('../utils/logger');
 
@@ -192,6 +193,7 @@ class InstanceController {
  */
   async getLatestEvents(req, res, next) {
     try {
+      
       const instanceId = req.params.instanceId;
       const { since, limit = 20, types = '' } = req.query;
 

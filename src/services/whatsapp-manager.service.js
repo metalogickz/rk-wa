@@ -51,6 +51,24 @@ class WhatsAppManager {
    */
   async initAllInstances() {
     try {
+      try {
+        const tableExists = await prisma.$queryRaw`
+          SELECT name FROM sqlite_master 
+          WHERE type='table' AND name='instances'
+        `;
+
+        // If no table exists, return early
+        if (!tableExists || tableExists.length === 0) {
+          logger.warn('Instances table does not exist. Skipping initialization.');
+          return;
+        }
+      } catch (tableCheckError) {
+        logger.error('Error checking instances table existence', {
+          error: tableCheckError.message
+        });
+        return;
+      }
+
       // Полная очистка существующих инстансов в памяти
       this.instances.clear();
 

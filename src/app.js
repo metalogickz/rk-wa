@@ -12,15 +12,13 @@ const path = require('path');
 const fs = require('fs');
 const dbConnector = require('./utils/db-connector');
 
-// Запуск сервера
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, '../public')));
 
-// Подготовка директории для SQLite
 if (process.env.DATABASE_PROVIDER === 'sqlite') {
   const dbDir = path.dirname(process.env.SQLITE_DATABASE_URL.replace('file:', ''));
   if (!fs.existsSync(dbDir)) {
@@ -29,20 +27,18 @@ if (process.env.DATABASE_PROVIDER === 'sqlite') {
   }
 }
 
-// Request logging
 app.use((req, res, next) => {
-  logger.debug(`${req.method} ${req.originalUrl}`, { 
-    ip: req.ip, 
-    userAgent: req.get('User-Agent') 
+  logger.debug(`${req.method} ${req.originalUrl}`, {
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
   });
   next();
 });
 
-// Роуты для управления базой данных
 app.get('/api/db/status', (req, res) => {
   res.json({
     provider: dbConnector.activeProvider,
-    url: dbConnector.activeProvider === 'mongodb' 
+    url: dbConnector.activeProvider === 'mongodb'
       ? process.env.DATABASE_URL.replace(/:[^:]*@/, ':****@') // Скрываем пароль
       : process.env.SQLITE_DATABASE_URL
   });
@@ -51,26 +47,26 @@ app.get('/api/db/status', (req, res) => {
 app.post('/api/db/switch', async (req, res) => {
   try {
     const { provider } = req.body;
-    
+
     if (!provider || (provider !== 'mongodb' && provider !== 'sqlite')) {
-      return res.status(400).json({ 
-        error: 'Invalid provider. Use "mongodb" or "sqlite"' 
+      return res.status(400).json({
+        error: 'Invalid provider. Use "mongodb" or "sqlite"'
       });
     }
-    
+
     // Проверка необходимых переменных окружения
     if (provider === 'mongodb' && !process.env.DATABASE_URL) {
-      return res.status(400).json({ 
-        error: 'Missing DATABASE_URL environment variable' 
+      return res.status(400).json({
+        error: 'Missing DATABASE_URL environment variable'
       });
     }
-    
+
     if (provider === 'sqlite' && !process.env.SQLITE_DATABASE_URL) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing SQLITE_DATABASE_URL environment variable'
       });
     }
-    
+
     // Если провайдер уже активен, просто вернем статус
     if (provider === dbConnector.activeProvider) {
       return res.json({
@@ -79,19 +75,19 @@ app.post('/api/db/switch', async (req, res) => {
         provider: dbConnector.activeProvider
       });
     }
-    
+
     // Переключаем провайдер
     logger.info(`Switching database provider to ${provider}`);
-    
+
     // Отключаем существующие соединения
     await dbConnector.disconnect();
-    
+
     // Переключаем провайдер и получаем новый клиент
     const client = dbConnector.switchProvider(provider);
-    
+
     // Обновляем переменную окружения для последующих запусков
     process.env.DATABASE_PROVIDER = provider;
-    
+
     return res.json({
       success: true,
       message: `Database provider switched to ${provider}`,
@@ -102,47 +98,106 @@ app.post('/api/db/switch', async (req, res) => {
       error: error.message,
       stack: error.stack
     });
-    
+
     return res.status(500).json({
       error: `Failed to switch database provider: ${error.message}`
     });
   }
 });
 
-// API routes
 app.use('/api', apiRoutes);
 
-// Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date(),
-    dbProvider: dbConnector.activeProvider 
+    dbProvider: dbConnector.activeProvider
   });
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/login.html'));
+});
+
+app.get('/ui/instances', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/instances.html'));
+});
+
+app.get('/ui/instance/create', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/instance-create.html'));
+});
+
+app.get('/ui/instance/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/instance-detail.html'));
+});
+
+app.get('/ui/instance/edit/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/instance-edit.html'));
+});
+
+app.get('/ui/instance/:id/chat', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/chat.html'));
+});
+
+app.get('/ui/instance/:id/contacts', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/contacts.html'));
+});
+
+app.get('/ui/stats', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/stats.html'));
 });
 
 // Error handling
 app.use(errorMiddleware);
 
+const initializeDatabase = async () => {
+  try {
+    // Инициализируем базу данных
+    await dbConnector.initialize();
+
+    logger.info(`Database initialized successfully with provider: ${dbConnector.activeProvider}`);
+  } catch (error) {
+    logger.error('Database initialization failed', {
+      error: error.message,
+      stack: error.stack
+    });
+    process.exit(1);
+  }
+};
+
 // Start server
-const server = app.listen(PORT, () => {
-  logger.info(`WhatsApp Multi-Instance API service running on port ${PORT}`);
-  logger.info(`Database provider: ${dbConnector.activeProvider}`);
+const server = app.listen(PORT, async () => {
+  try {
+    // Инициализируем базу данных перед стартом сервера
+    await initializeDatabase();
+
+    logger.info(`WhatsApp Multi-Instance API service running on port ${PORT}`);
+    logger.info(`Database provider: ${dbConnector.activeProvider}`);
+  } catch (error) {
+    logger.error('Server startup failed', {
+      error: error.message
+    });
+    process.exit(1);
+  }
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM signal received. Closing HTTP server and database connections');
-  
+
   // Закрываем HTTP сервер (перестаем принимать новые запросы)
   server.close(async () => {
     logger.info('HTTP server closed');
-    
+
     try {
       // Закрываем соединение с базой данных
       await dbConnector.disconnect();
       logger.info('Database connections closed');
-      
+
       process.exit(0);
     } catch (err) {
       logger.error('Error during graceful shutdown', { error: err.message });
@@ -157,15 +212,15 @@ cron.schedule(socketCheckSchedule, async () => {
   try {
     logger.info('Starting scheduled socket health check');
     const results = await whatsappManager.checkAllSockets();
-    
+
     // Логируем только проблемные инстансы для экономии места в логах
     const problematicInstances = Object.entries(results)
       .filter(([_, status]) => !status.alive)
       .map(([id, status]) => ({ id, status }));
-    
+
     if (problematicInstances.length > 0) {
-      logger.warn(`Found ${problematicInstances.length} problematic instances`, { 
-        instances: problematicInstances 
+      logger.warn(`Found ${problematicInstances.length} problematic instances`, {
+        instances: problematicInstances
       });
     } else {
       logger.info('All instances have healthy connections');
@@ -236,17 +291,17 @@ cron.schedule(systemMetricsSchedule, async () => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', async (error) => {
-  logger.error('Uncaught exception', { 
-    error: error.message, 
-    stack: error.stack 
+  logger.error('Uncaught exception', {
+    error: error.message,
+    stack: error.stack
   });
-  
+
   try {
     await dbConnector.disconnect();
   } catch (err) {
     logger.error('Error disconnecting from database', { error: err.message });
   }
-  
+
   // Exit only in production
   if (process.env.NODE_ENV === 'production') {
     process.exit(1);
@@ -255,12 +310,12 @@ process.on('uncaughtException', async (error) => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', async (reason, promise) => {
-  logger.error('Unhandled promise rejection', { 
-    reason: reason instanceof Error ? 
-      { message: reason.message, stack: reason.stack } : 
-      reason 
+  logger.error('Unhandled promise rejection', {
+    reason: reason instanceof Error ?
+      { message: reason.message, stack: reason.stack } :
+      reason
   });
-  
+
   // Exit only in production
   if (process.env.NODE_ENV === 'production') {
     try {
@@ -268,7 +323,7 @@ process.on('unhandledRejection', async (reason, promise) => {
     } catch (err) {
       logger.error('Error disconnecting from database', { error: err.message });
     }
-    
+
     process.exit(1);
   }
 });

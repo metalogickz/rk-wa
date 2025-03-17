@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мини-чат - WhatsApp API</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .chat-container {
+      display: flex;
+      height: calc(100vh - 200px);
+      margin-top: 20px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    
+    .contacts-panel {
+      width: 30%;
+      border-right: 1px solid #ddd;
+      overflow-y: auto;
+      background-color: #f5f5f5;
+    }
+    
+    .chat-panel {
+      width: 70%;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-header {
+      padding: 15px;
+      background-color: #075e54;
+      color: white;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .chat-messages {
+      flex-grow: 1;
+      padding: 15px;
+      overflow-y: auto;
+      background-color: #e5ddd5;
+    }
+    
+    .chat-input {
+      padding: 15px;
+      border-top: 1px solid #ddd;
+      background-color: white;
+    }
+    
+    .contact-item {
+      padding: 15px;
+      border-bottom: 1px solid #ddd;
+      cursor: pointer;
+    }
+    
+    .contact-item:hover, .contact-item.active {
+      background-color: #e6e6e6;
+    }
+    
+    .message {
+      margin-bottom: 10px;
+      padding: 8px 15px;
+      border-radius: 10px;
+      max-width: 70%;
+      position: relative;
+      word-wrap: break-word;
+    }
+    
+    .message-incoming {
+      background-color: white;
+      align-self: flex-start;
+      margin-right: auto;
+    }
+    
+    .message-outgoing {
+      background-color: #dcf8c6;
+      align-self: flex-end;
+      margin-left: auto;
+    }
+    
+    .message-time {
+      font-size: 11px;
+      color: #999;
+      margin-top: 5px;
+      display: block;
+      text-align: right;
+    }
+    
+    .message-status {
+      font-size: 12px;
+      margin-top: 3px;
+      text-align: right;
+    }
+    
+    .messages-container {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chat-input-form {
+      display: flex;
+    }
+    
+    .chat-input-form input {
+      flex-grow: 1;
+      margin-right: 10px;
+    }
+    
+    .contact-search {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 5px;
+    }
+    
+    .status-online {
+      background-color: #4CAF50;
+    }
+    
+    .status-offline {
+      background-color: #F44336;
+    }
+    
+    .media-message {
+      max-width: 100%;
+      border-radius: 5px;
+      margin-top: 5px;
+      cursor: pointer;
+    }
+    
+    .media-preview {
+      max-width: 200px;
+      max-height: 200px;
+      border-radius: 5px;
+    }
+    
+    .no-contact-selected {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-size: 18px;
+      color: #999;
+    }
+    
+    .no-contact-selected i {
+      font-size: 50px;
+      margin-bottom: 20px;
+    }
+    
+    .contact-phone {
+      font-size: 12px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="navbar">
+    <div class="nav-container">
+      <div class="nav-title">WhatsApp API Manager</div>
+      <ul class="nav-links">
+        <li><a href="/instances">Инстансы</a></li>
+        <li><a href="/stats">Статистика</a></li>
+        <li><span id="user-info"></span> <a href="#" id="logout-btn">(Выйти)</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="mb-20">
+      <a href="/instances" class="btn btn-secondary">&larr; Назад к списку</a>
+    </div>
+
+    <div id="loading" class="text-center">
+      <p>Загрузка данных...</p>
+    </div>
+
+    <div id="chat-container" class="hidden">
+      <div class="flex justify-between items-center mb-20">
+        <h1>Мини-чат для инстанса: <span id="instance-name">-</span></h1>
+        <div id="status-container"></div>
+      </div>
+
+      <div class="card mb-20" id="instance-info">
+        <div class="flex justify-between items-center">
+          <h2 class="card-title">Информация об инстансе</h2>
+          <div id="instance-status"></div>
+        </div>
+        <div class="form-group">
+          <label>ID:</label>
+          <div id="instance-id">-</div>
+        </div>
+        <div class="form-group">
+          <label>Описание:</label>
+          <div id="instance-description">-</div>
+        </div>
+        <div class="form-group">
+          <label>Статистика:</label>
+          <div id="instance-stats">Отправлено: 0, Получено: 0</div>
+        </div>
+      </div>
+
+      <div class="chat-container">
+        <div class="contacts-panel">
+          <div class="contact-search">
+            <input type="text" id="contact-search" class="form-control" placeholder="Поиск контакта...">
+          </div>
+          <div id="contacts-list">
+            <!-- Контакты будут загружены динамически -->
+            <div class="text-center" style="padding: 20px;">
+              <p>Загрузка контактов...</p>
+            </div>
+          </div>
+        </div>
+        <div class="chat-panel">
+          <div id="no-contact-selected" class="no-contact-selected">
+            <div>Выберите контакт из списка слева</div>
+          </div>
+          <div id="active-chat" class="hidden" style="display: flex; flex-direction: column; height: 100%;">
+            <div class="chat-header" id="chat-header">
+              <!-- Данные активного контакта -->
+            </div>
+            <div class="chat-messages" id="chat-messages">
+              <div class="messages-container" id="messages-container">
+                <!-- Сообщения будут загружены динамически -->
+              </div>
+            </div>
+            <div class="chat-input">
+              <form id="message-form" class="chat-input-form">
+                <input type="text" id="message-input" class="form-control" placeholder="Введите сообщение...">
+                <button type="submit" class="btn">Отправить</button>
+              </form>
+              <div style="margin-top: 10px;">
+                <form id="media-form" enctype="multipart/form-data">
+                  <input type="file" id="media-input" name="file" style="display: none;">
+                  <button type="button" id="media-btn" class="btn btn-secondary" style="margin-right: 5px;">Прикрепить файл</button>
+                  <span id="file-name"></span>
+                  <button type="submit" id="media-submit" class="btn" style="display: none;">Отправить медиафайл</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const instanceId = getIdFromPath();
+      let currentContact = null;
+      let chatPollingInterval = null;
+      let contactsRefreshInterval = null;
+      let lastMsgTimestamp = null;
+      
+      // Элементы страницы
+      const loadingElement = document.getElementById('loading');
+      const chatContainer = document.getElementById('chat-container');
+      const instanceNameElement = document.getElementById('instance-name');
+      const instanceIdElement = document.getElementById('instance-id');
+      const instanceDescriptionElement = document.getElementById('instance-description');
+      const instanceStatusElement = document.getElementById('instance-status');
+      const instanceStatsElement = document.getElementById('instance-stats');
+      const contactsListElement = document.getElementById('contacts-list');
+      const contactSearchInput = document.getElementById('contact-search');
+      const noContactSelected = document.getElementById('no-contact-selected');
+      const activeChat = document.getElementById('active-chat');
+      const chatHeader = document.getElementById('chat-header');
+      const messagesContainer = document.getElementById('messages-container');
+      const messageForm = document.getElementById('message-form');
+      const messageInput = document.getElementById('message-input');
+      const statusContainer = document.getElementById('status-container');
+      const mediaBtn = document.getElementById('media-btn');
+      const mediaInput = document.getElementById('media-input');
+      const fileNameElement = document.getElementById('file-name');
+      const mediaSubmit = document.getElementById('media-submit');
+      const mediaForm = document.getElementById('media-form');
+      
+      try {
+        // Загружаем данные инстанса
+        const instanceData = await fetchAPI(`/instances/${instanceId}`);
+        
+        // Заполняем информацию об инстансе
+        instanceNameElement.textContent = instanceData.name;
+        instanceIdElement.textContent = instanceId;
+        instanceDescriptionElement.textContent = instanceData.description || '-';
+        instanceStatusElement.innerHTML = getStatusBadgeHTML(instanceData.status);
+        instanceStatsElement.textContent = `Отправлено: ${instanceData.sentMessages || 0}, Получено: ${instanceData.receivedMessages || 0}`;
+        
+        // Скрываем загрузку и показываем чат
+        loadingElement.classList.add('hidden');
+        chatContainer.classList.remove('hidden');
+        
+        // Начинаем периодически обновлять статус инстанса
+        setInterval(updateInstanceStatus, 5000);
+        
+        // Загружаем контакты
+        await loadContacts();
+        
+        // Начинаем периодически обновлять список контактов
+        contactsRefreshInterval = setInterval(loadContacts, 60000); // Обновляем каждую минуту
+        
+        // Обработчик поиска контактов
+        contactSearchInput.addEventListener('input', filterContacts);
+        
+        // Обработчик формы отправки сообщения
+        messageForm.addEventListener('submit', sendMessage);
+        
+        // Обработчики для отправки медиа
+        mediaBtn.addEventListener('click', () => mediaInput.click());
+        mediaInput.addEventListener('change', handleFileSelect);
+        mediaForm.addEventListener('submit', sendMedia);
+      } catch (error) {
+        loadingElement.classList.add('hidden');
+        showAlert(`Ошибка при загрузке данных: ${error.message}`, 'danger');
+      }
+      
+      // Функция для обновления статуса инстанса
+      async function updateInstanceStatus() {
+        try {
+          const statusData = await fetchAPI(`/whatsapp/${instanceId}/status`);
+          
+          // Обновляем статус
+          instanceStatusElement.innerHTML = getStatusBadgeHTML(statusData.status);
+          
+          // Обновляем индикатор в заголовке
+          updateStatusIndicator(statusData.status);
+        } catch (error) {
+          console.error('Ошибка при обновлении статуса:', error);
+        }
+      }
+      
+      // Функция для загрузки контактов
+      async function loadContacts() {
+        try {
+          contactsListElement.innerHTML = '<div class="text-center" style="padding: 20px;"><p>Загрузка контактов...</p></div>';
+          
+          // Получаем контакты от API
+          const { contacts } = await fetchAPI(`/whatsapp/${instanceId}/contacts`);
+          
+          // Если нет контактов, показываем сообщение
+          if (!contacts || contacts.length === 0) {
+            contactsListElement.innerHTML = '<div class="text-center" style="padding: 20px;"><p>Нет доступных контактов</p></div>';
+            return;
+          }
+          
+          // Сортируем контакты по имени
+          contacts.sort((a, b) => {
+            const nameA = a.name || a.number;
+            const nameB = b.name || b.number;
+            return nameA.localeCompare(nameB);
+          });
+          
+          // Очищаем список контактов и добавляем новые
+          contactsListElement.innerHTML = '';
+          
+          contacts.forEach(contact => {
+            const contactElement = document.createElement('div');
+            contactElement.className = 'contact-item';
+            contactElement.dataset.jid = contact.id;
+            contactElement.dataset.phone = contact.number;
+            contactElement.dataset.name = contact.name || contact.number;
+            
+            contactElement.innerHTML = `
+              <div><strong>${contact.name || 'Без имени'}</strong></div>
+              <div class="contact-phone">${contact.number}</div>
+            `;
+            
+            // Добавляем обработчик клика
+            contactElement.addEventListener('click', () => selectContact(contact));
+            
+            contactsListElement.appendChild(contactElement);
+          });
+          
+          // Если был выбран контакт, сохраняем выделение
+          if (currentContact) {
+            const selectedElement = contactsListElement.querySelector(`[data-jid="${currentContact.id}"]`);
+            if (selectedElement) {
+              selectedElement.classList.add('active');
+            }
+          }
+        } catch (error) {
+          contactsListElement.innerHTML = `
+            <div class="text-center" style="padding: 20px;">
+              <p>Ошибка при загрузке контактов: ${error.message}</p>
+              <button id="retry-contacts" class="btn">Повторить</button>
+            </div>
+          `;
+          
+          document.getElementById('retry-contacts').addEventListener('click', loadContacts);
+        }
+      }
+      
+      // Функция для фильтрации контактов
+      function filterContacts() {
+        const searchTerm = contactSearchInput.value.toLowerCase();
+        const contactItems = contactsListElement.querySelectorAll('.contact-item');
+        
+        contactItems.forEach(item => {
+          const name = item.dataset.name.toLowerCase();
+          const phone = item.dataset.phone.toLowerCase();
+          
+          // Показываем контакт, если имя или номер содержит поисковый запрос
+          if (name.includes(searchTerm) || phone.includes(searchTerm)) {
+            item.style.display = '';
+          } else {
+            item.style.display = 'none';
+          }
+        });
+      }
+      
+      // Функция для выбора контакта и загрузки истории чата
+      async function selectContact(contact) {
+        // Снимаем выделение с предыдущего контакта
+        const activeContact = contactsListElement.querySelector('.contact-item.active');
+        if (activeContact) {
+          activeContact.classList.remove('active');
+        }
+        
+        // Выделяем новый контакт
+        const contactElement = contactsListElement.querySelector(`[data-jid="${contact.id}"]`);
+        if (contactElement) {
+          contactElement.classList.add('active');
+        }
+        
+        // Сохраняем текущий контакт
+        currentContact = contact;
+        
+        // Обновляем заголовок чата
+        chatHeader.innerHTML = `
+          <div><strong>${contact.name || 'Без имени'}</strong></div>
+          <div class="contact-phone">${contact.number}</div>
+        `;
+        
+        // Показываем область чата и скрываем заглушку
+        noContactSelected.classList.add('hidden');
+        activeChat.classList.remove('hidden');
+        
+        // Очищаем контейнер сообщений и показываем индикатор загрузки
+        messagesContainer.innerHTML = '<div class="text-center"><p>Загрузка сообщений...</p></div>';
+        
+        try {
+          // Загружаем историю чата
+          await loadChatHistory();
+          
+          // Очищаем предыдущий интервал, если он был
+          if (chatPollingInterval) {
+            clearInterval(chatPollingInterval);
+          }
+          
+          // Запускаем периодическое обновление чата
+          chatPollingInterval = setInterval(pollNewMessages, 3000);
+        } catch (error) {
+          messagesContainer.innerHTML = `
+            <div class="text-center">
+              <p>Ошибка при загрузке сообщений: ${error.message}</p>
+              <button id="retry-messages" class="btn">Повторить</button>
+            </div>
+          `;
+          
+          document.getElementById('retry-messages').addEventListener('click', loadChatHistory);
+        }
+      }
+      
+      // Функция для загрузки истории чата
+      async function loadChatHistory() {
+        if (!currentContact) return;
+        
+        try {
+          // Запрашиваем историю чата
+          const chatHistory = await fetchAPI(`/instances/${instanceId}/chats/${currentContact.number}/history?limit=50`);
+          
+          // Если нет сообщений
+          if (!chatHistory.messages || chatHistory.messages.length === 0) {
+            messagesContainer.innerHTML = '<div class="text-center"><p>Нет сообщений</p></div>';
+            return;
+          }
+          
+          // Очищаем контейнер сообщений
+          messagesContainer.innerHTML = '';
+          
+          // Сортируем сообщения по дате (от старых к новым)
+          const messages = chatHistory.messages.sort((a, b) => 
+            new Date(a.createdAt) - new Date(b.createdAt)
+          );
+          
+          // Запоминаем временную метку последнего сообщения
+          if (messages.length > 0) {
+            lastMsgTimestamp = new Date(messages[messages.length - 1].createdAt);
+          }
+          
+          // Отображаем сообщения
+          messages.forEach(renderMessage);
+          
+          // Прокручиваем до последнего сообщения
+          scrollToBottom();
+        } catch (error) {
+          throw error;
+        }
+      }
+      
+      // Функция для опроса новых сообщений
+      async function pollNewMessages() {
+        if (!currentContact || !lastMsgTimestamp) return;
+        
+        try {
+          // Формируем запрос с учетом временной метки последнего сообщения
+          const since = lastMsgTimestamp ? lastMsgTimestamp.toISOString() : null;
+          const chatHistory = await fetchAPI(`/instances/${instanceId}/chats/${currentContact.number}/history?limit=10&startDate=${since}`);
+          
+          // Если есть новые сообщения
+          if (chatHistory.messages && chatHistory.messages.length > 0) {
+            // Сортируем сообщения по дате (от старых к новым)
+            const newMessages = chatHistory.messages.sort((a, b) => 
+              new Date(a.createdAt) - new Date(b.createdAt)
+            );
+            
+            // Обновляем временную метку последнего сообщения
+            if (newMessages.length > 0) {
+              lastMsgTimestamp = new Date(newMessages[newMessages.length - 1].createdAt);
+            }
+            
+            // Отображаем новые сообщения
+            newMessages.forEach(renderMessage);
+            
+            // Прокручиваем до последнего сообщения
+            scrollToBottom();
+          }
+        } catch (error) {
+          console.error('Ошибка при опросе новых сообщений:', error);
+        }
+      }
+      
+      // Функция для отображения сообщения
+      function renderMessage(message) {
+        const messageElement = document.createElement('div');
+        messageElement.className = `message ${message.fromMe ? 'message-outgoing' : 'message-incoming'}`;
+        
+        // Формируем время сообщения
+        const date = new Date(message.createdAt);
+        const formattedTime = date.toLocaleTimeString('ru-RU', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        // Проверяем, содержит ли сообщение медиа
+        let mediaHtml = '';
+        if (message.hasMedia) {
+          if (message.mimeType && message.mimeType.startsWith('image/')) {
+            mediaHtml = `
+              <div class="media-message">
+                <img src="${message.mediaUrl || '#'}" alt="Изображение" class="media-preview">
+              </div>
+            `;
+          } else {
+            mediaHtml = `
+              <div class="media-message">
+                <div><strong>Медиафайл:</strong> ${message.fileName || 'Файл'}</div>
+                <a href="${message.mediaUrl || '#'}" target="_blank" class="btn btn-secondary btn-sm">Скачать</a>
+              </div>
+            `;
+          }
+        }
+        
+        // Формируем содержимое сообщения
+        messageElement.innerHTML = `
+          ${mediaHtml}
+          <div>${message.content}</div>
+          <span class="message-time">${formattedTime}</span>
+          ${message.fromMe ? `<div class="message-status">${getMessageStatusText(message.status)}</div>` : ''}
+        `;
+        
+        // Добавляем сообщение в контейнер
+        messagesContainer.appendChild(messageElement);
+      }
+      
+      // Функция для получения текстового статуса сообщения
+      function getMessageStatusText(status) {
+        switch (status) {
+          case 'sent': return 'Отправлено';
+          case 'delivered': return 'Доставлено';
+          case 'read': return 'Прочитано';
+          case 'failed': return 'Ошибка отправки';
+          default: return status;
+        }
+      }
+      
+      // Функция для прокрутки контейнера сообщений вниз
+      function scrollToBottom() {
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+      
+      // Функция для отправки текстового сообщения
+      async function sendMessage(e) {
+        e.preventDefault();
+        
+        if (!currentContact) return;
+        
+        const message = messageInput.value.trim();
+        if (!message) return;
+        
+        // Очищаем поле ввода
+        messageInput.value = '';
+        
+        try {
+          // Отправляем сообщение через API
+          const response = await fetchAPI(`/whatsapp/${instanceId}/send`, {
+            method: 'POST',
+            body: JSON.stringify({
+              phone: currentContact.number,
+              message
+            })
+          });
+          
+          // Обновляем чат для отображения нового сообщения
+          await loadChatHistory();
+        } catch (error) {
+          showAlert(`Ошибка при отправке сообщения: ${error.message}`, 'danger');
+        }
+      }
+      
+      // Функция для обработки выбора файла
+      function handleFileSelect(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Отображаем имя файла
+        fileNameElement.textContent = file.name;
+        
+        // Показываем кнопку отправки
+        mediaSubmit.style.display = 'inline-block';
+      }
+      
+      // Функция для отправки медиафайла
+      async function sendMedia(e) {
+        e.preventDefault();
+        
+        if (!currentContact) return;
+        
+        const fileInput = document.getElementById('media-input');
+        if (!fileInput.files || fileInput.files.length === 0) {
+          showAlert('Выберите файл для отправки', 'danger');
+          return;
+        }
+        
+        // Создаем объект FormData для отправки файла
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        formData.append('phone', currentContact.number);
+        formData.append('caption', ''); // Можно добавить поле для ввода подписи
+        
+        try {
+          // Отображаем индикатор загрузки
+          mediaSubmit.disabled = true;
+          mediaSubmit.textContent = 'Отправка...';
+          
+          // Получаем токен или API ключ для аутентификации
+          const { token, apiKey } = checkAuth();
+          
+          // Формируем заголовки
+          const headers = {};
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          } else if (apiKey) {
+            headers['x-api-key'] = apiKey;
+          }
+          
+          // Отправляем файл через fetch напрямую, так как fetchAPI не поддерживает FormData
+          const response = await fetch(`/api/whatsapp/${instanceId}/send-file`, {
+            method: 'POST',
+            headers,
+            body: formData
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Ошибка отправки файла');
+          }
+          
+          // Сбрасываем форму
+          fileInput.value = '';
+          fileNameElement.textContent = '';
+          mediaSubmit.style.display = 'none';
+          
+          // Обновляем чат для отображения нового сообщения
+          await loadChatHistory();
+          
+          showAlert('Файл успешно отправлен', 'success');
+        } catch (error) {
+          showAlert(`Ошибка при отправке файла: ${error.message}`, 'danger');
+        } finally {
+          // Восстанавливаем кнопку
+          mediaSubmit.disabled = false;
+          mediaSubmit.textContent = 'Отправить медиафайл';
+        }
+      }
+      
+      // Функция для обновления индикатора статуса в заголовке
+      function updateStatusIndicator(status) {
+        let html = '';
+        
+        if (status === 'connected') {
+          html = `<div class="status-badge status-connected">Подключено</div>`;
+        } else if (status === 'connecting') {
+          html = `<div class="status-badge status-connecting">Подключение</div>`;
+        } else if (status === 'qr_received') {
+          html = `<div class="status-badge status-qr-received">Требуется QR-код</div>`;
+        } else {
+          html = `<div class="status-badge status-disconnected">Отключено</div>`;
+        }
+        
+        statusContainer.innerHTML = html;
+      }
+      
+      // Отписываемся от интервалов при закрытии страницы
+      window.addEventListener('beforeunload', () => {
+        if (chatPollingInterval) clearInterval(chatPollingInterval);
+        if (contactsRefreshInterval) clearInterval(contactsRefreshInterval);
+      });
+    });
+  </script>
+</body>
+</html>

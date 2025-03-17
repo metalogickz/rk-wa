@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Создание инстанса - WhatsApp API</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+  <div class="navbar">
+    <div class="nav-container">
+      <div class="nav-title">WhatsApp API Manager</div>
+      <ul class="nav-links">
+        <li><a href="/ui/instances">Инстансы</a></li>
+        <li><a href="/ui/stats">Статистика</a></li>
+        <li><span id="user-info"></span> <a href="#" id="logout-btn">(Выйти)</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="mb-20">
+      <a href="/ui/instances" class="btn btn-secondary">&larr; Назад к списку</a>
+    </div>
+
+    <h1 class="mb-20">Создание нового инстанса WhatsApp</h1>
+
+    <div class="card">
+      <form id="instance-form">
+        <div class="form-group">
+          <label for="name">Название инстанса *</label>
+          <input type="text" id="name" name="name" class="form-control" required>
+        </div>
+
+        <div class="form-group">
+          <label for="description">Описание</label>
+          <textarea id="description" name="description" class="form-control" rows="3"></textarea>
+        </div>
+
+        <h3 class="mb-20">Настройки Webhook</h3>
+
+        <div class="form-group">
+          <label for="webhookUrl">URL Webhook</label>
+          <input type="url" id="webhookUrl" name="webhookUrl" class="form-control"
+            placeholder="https://example.com/webhook">
+          <small>URL для получения уведомлений о новых сообщениях и изменениях статуса.</small>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <input type="checkbox" id="webhookEnabled" name="webhookEnabled">
+            Включить webhook
+          </label>
+        </div>
+
+        <div id="webhook-settings" class="hidden">
+          <div class="form-group">
+            <label>Уведомления:</label>
+            <div>
+              <label>
+                <input type="checkbox" id="notifyReceived" name="notifyReceived" checked>
+                О входящих сообщениях
+              </label>
+            </div>
+            <div>
+              <label>
+                <input type="checkbox" id="notifySent" name="notifySent" checked>
+                Об исходящих сообщениях
+              </label>
+            </div>
+            <div>
+              <label>
+                <input type="checkbox" id="notifyDelivery" name="notifyDelivery">
+                О статусе доставки
+              </label>
+            </div>
+            <div>
+              <label>
+                <input type="checkbox" id="notifyRead" name="notifyRead">
+                О статусе прочтения
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="maxRetries">Максимальное количество повторных попыток</label>
+            <input type="number" id="maxRetries" name="maxRetries" class="form-control" value="3" min="1" max="10">
+          </div>
+
+          <div class="form-group">
+            <label for="retryInterval">Интервал между повторными попытками (мс)</label>
+            <input type="number" id="retryInterval" name="retryInterval" class="form-control" value="60000" min="1000"
+              step="1000">
+          </div>
+
+          <div class="form-group">
+            <label for="webhookSecret">Секретный ключ для подписи webhook (опционально)</label>
+            <input type="text" id="webhookSecret" name="webhookSecret" class="form-control">
+            <small>Если не указан, будет сгенерирован автоматически.</small>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <button type="submit" class="btn">Создать инстанс</button>
+          <a href="/instances" class="btn btn-secondary" style="margin-left: 10px;">Отмена</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/utils.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('instance-form');
+      const webhookEnabledCheckbox = document.getElementById('webhookEnabled');
+      const webhookSettingsDiv = document.getElementById('webhook-settings');
+
+      // Показываем или скрываем настройки webhook в зависимости от состояния чекбокса
+      webhookEnabledCheckbox.addEventListener('change', () => {
+        webhookSettingsDiv.classList.toggle('hidden', !webhookEnabledCheckbox.checked);
+      });
+
+      // Обработчик отправки формы
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        try {
+          // Собираем данные формы
+          const formData = {
+            name: document.getElementById('name').value,
+            description: document.getElementById('description').value,
+            webhookUrl: document.getElementById('webhookUrl').value,
+            webhookEnabled: document.getElementById('webhookEnabled').checked
+          };
+
+          // Если webhook включен, добавляем настройки
+          if (formData.webhookEnabled) {
+            formData.webhookSettings = {
+              notifyReceived: document.getElementById('notifyReceived').checked,
+              notifySent: document.getElementById('notifySent').checked,
+              notifyDelivery: document.getElementById('notifyDelivery').checked,
+              notifyRead: document.getElementById('notifyRead').checked,
+              maxRetries: parseInt(document.getElementById('maxRetries').value),
+              retryInterval: parseInt(document.getElementById('retryInterval').value),
+              secret: document.getElementById('webhookSecret').value || undefined
+            };
+          }
+
+          // Отправляем запрос на создание инстанса
+          const response = await fetchAPI('/instances', {
+            method: 'POST',
+            body: JSON.stringify(formData)
+          });
+
+          // Показываем сообщение об успехе
+          showAlert('Инстанс успешно создан!', 'success');
+
+          // Перенаправляем на страницу списка инстансов
+          setTimeout(() => {
+            window.location.href = '/ui/instances';
+          }, 1000);
+        } catch (error) {
+          showAlert(`Ошибка при создании инстанса: ${error.message}`, 'danger');
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>
