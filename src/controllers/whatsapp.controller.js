@@ -125,8 +125,33 @@ class WhatsAppController {
     try {
       const instanceId = req.params.instanceId;
 
-      const contacts = await whatsappManager.getContacts(instanceId);
+      const { contacts } = await whatsappManager.getContacts(instanceId);
       res.json({ contacts });
+    } catch (error) {
+      // Если произошла непредвиденная ошибка, возвращаем пустой массив
+      res.json({ contacts: [] });
+    }
+  }
+
+  /**
+ * Получить контакты
+ * @param {object} req - Запрос
+ * @param {object} res - Ответ
+ * @param {function} next - Следующий middleware
+ */
+  async addContact(req, res, next) {
+    try {
+      const instanceId = req.params.instanceId;
+      const { phone, name } = req.body;
+
+      if (!phone) {
+        return res.status(400).json({ error: 'Номер телефона обязателен' });
+      }
+
+      // Здесь должна быть логика добавления контакта через WhatsApp
+      const result = await whatsappManager.addContact(instanceId, phone, name);
+
+      res.json(result);
     } catch (error) {
       next(error);
     }

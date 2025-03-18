@@ -105,6 +105,9 @@
   <script src="/js/utils.js"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
+      // Проверяем авторизацию пользователя
+      if (!checkAuth()) return;
+
       const instanceId = getIdFromPath();
       let instanceData = null;
 
@@ -126,9 +129,9 @@
       const logoutInstanceBtn = document.getElementById('logout-instance-btn');
       const eventsContainer = document.getElementById('events-container');
 
-      document.getElementById('chat-btn').href = `/instance/${instanceId}/chat`;
-      document.getElementById('contacts-btn').href = `/instance/${instanceId}/contacts`;
-      document.getElementById('messages-btn').href = `/instance/${instanceId}/messages`;
+      document.getElementById('chat-btn').href = `/ui/instance/${instanceId}/chat`;
+      document.getElementById('contacts-btn').href = `/ui/instance/${instanceId}/contacts`;
+      document.getElementById('messages-btn').href = `/ui/instance/${instanceId}/messages`;
 
       try {
         // Загружаем данные инстанса
@@ -177,7 +180,7 @@
       // Функция для проверки статуса инстанса
       async function checkStatus() {
         try {
-          const statusData = await fetchAPI(`/whatsapp/${instanceId}/status`);
+          const statusData = await fetchAPI(`/instances/${instanceId}/status`);
 
           // Обновляем статус только если он изменился
           if (statusData.status !== instanceData.status) {
@@ -202,41 +205,38 @@
             return;
           }
 
-          // Запрашиваем QR-код
-          const response = await fetch(`/api/whatsapp/${instanceId}/qr`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-              'x-api-key': localStorage.getItem('apiKey')
-            }
-          });
+          // Показываем загрузку
+          qrContainer.innerHTML = `
+            <p>Загрузка QR-кода...</p>
+            <div class="loading-spinner"></div>
+          `;
 
-          if (!response.ok) {
-            if (response.status === 404) {
+          // Используем нашу универсальную функцию getQrCode
+          const data = await getQrCode(instanceId,
+            // Callback для состояния генерации QR-кода
+            (generatingData) => {
               qrContainer.innerHTML = `
-                <p>QR-код пока не доступен. Нажмите кнопку ниже, чтобы переподключить инстанс и получить новый QR-код.</p>
-                <div style="margin-top: 20px;">
-                  <button id="reconnect-btn-qr" class="btn">Переподключить</button>
+                <div class="alert alert-info">
+                  <p>${generatingData.message || 'QR-код генерируется. Пожалуйста, подождите...'}</p>
                 </div>
+                <div class="loading-spinner"></div>
               `;
-
-              // Добавляем обработчик для кнопки переподключения
-              document.getElementById('reconnect-btn-qr').addEventListener('click', reconnectInstance);
-
-              return;
             }
-            throw new Error('QR-код недоступен');
-          }
+          );
 
-          const data = await response.json();
+          // Проверяем, получены ли данные
+          if (data && data.qrCode) {
+            // Используем внешний сервис для генерации QR-кода из строки
+            const qrCodeImageUrl = generateQRCodeImage(data.qrCode);
 
-          if (data.qrCode) {
             qrContainer.innerHTML = `
               <div class="qr-container">
-                <img src="data:image/png;base64,${data.qrCode}" alt="QR Code" class="qr-image">
+                <img src="${qrCodeImageUrl}" alt="QR Code" class="qr-image">
               </div>
               <p>Отсканируйте этот QR-код через приложение WhatsApp на вашем телефоне, чтобы подключить инстанс.</p>
             `;
           } else {
+            // Если QR-код отсутствует, предлагаем переподключиться
             qrContainer.innerHTML = `
               <p>QR-код пока не доступен. Инстанс находится в состоянии "${instanceData.status}".</p>
               <div style="margin-top: 20px;">
@@ -249,6 +249,8 @@
           }
         } catch (error) {
           console.error('Ошибка при проверке QR-кода:', error);
+
+          // Показываем ошибку и кнопку переподключения
           qrContainer.innerHTML = `
             <div class="alert alert-danger">
               <p>Ошибка при загрузке QR-кода: ${error.message}</p>

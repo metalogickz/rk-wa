@@ -3,64 +3,160 @@ const API_BASE_URL = '/api';
 
 // Функция для проверки аутентификации
 function checkAuth() {
-  const token = localStorage.getItem('token');
-  const apiKey = localStorage.getItem('apiKey');
-
-  if (!token && !apiKey) {
-    // Если нет ни токена, ни API ключа, перенаправляем на страницу входа
+  const token = localStorage.getItem('authToken');
+  if (!token) {
     window.location.href = '/login';
+    return false;
   }
+  return true;
+}
 
-  return { token, apiKey };
+// Получение токена авторизации
+function getAuthToken() {
+  return localStorage.getItem('authToken');
+}
+
+// Загрузка информации о пользователе
+async function loadUserInfo() {
+  try {
+    const userData = await fetchAPI('/auth/me');
+
+    // Обновляем информацию в навигационной панели
+    const userInfoElement = document.getElementById('user-info');
+    if (userInfoElement) {
+      userInfoElement.textContent = userData.firstName || userData.email;
+    }
+
+    return userData;
+  } catch (error) {
+    console.error('Error loading user info:', error);
+    if (error.status === 401) {
+      // Если ошибка авторизации, перенаправляем на страницу входа
+      localStorage.removeItem('authToken');
+      window.location.href = '/login';
+    }
+    return null;
+  }
 }
 
 // Функция для выполнения API запросов с аутентификацией
-async function fetchAPI(endpoint, options = {}) {
-  const { token, apiKey } = checkAuth();
+async function fetchAPI(endpoint, options = {}, handleAccepted = false) {
+  // Проверка на наличие слеша в начале пути
+  if (!endpoint.startsWith('/')) {
+    endpoint = '/' + endpoint;
+  }
 
+  // Полный URL для запроса
+  const url = `/api${endpoint}`;
+
+  // Базовые заголовки
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers
   };
 
-  // Добавляем заголовок аутентификации
+  // Добавляем токен авторизации, если он есть
+  const token = getAuthToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-  } else if (apiKey) {
-    headers['x-api-key'] = apiKey;
   }
 
+  // Настройки запроса
+  const fetchOptions = {
+    ...options,
+    headers
+  };
+
   try {
-    console.log('Fetching API:', `${API_BASE_URL}${endpoint}`, 'Options:', options);
+    const response = await fetch(url, fetchOptions);
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      ...options,
-      headers
-    });
-
-    console.log('Response status:', response.status);
-
-    // Если статус 401, сбрасываем аутентификацию и перенаправляем на страницу входа
-    if (response.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('apiKey');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-      return null;
+    // Специальная обработка для статуса 202 (Accepted)
+    if (response.status === 202 && handleAccepted) {
+      return {
+        status: 202,
+        data: await response.json()
+      };
     }
 
-    // Для всех остальных ошибок просто кидаем исключение
+    // Проверяем статус ответа
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('API Error:', errorData);
-      throw new Error(errorData.error || 'API request failed');
+      // Пытаемся получить сообщение об ошибке из ответа
+      let errorMessage = 'API request failed';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (e) {
+        // Если не получилось распарсить JSON, используем статус текст
+        errorMessage = response.statusText;
+      }
+
+      // Создаем объект ошибки с дополнительной информацией
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      error.response = response;
+      throw error;
+    }
+
+    // Если ответ успешный и это не HEAD или DELETE запрос,
+    // пытаемся распарсить ответ как JSON
+    if (options.method !== 'HEAD' && options.method !== 'DELETE') {
+      return await response.json();
+    }
+
+    return true;
+  } catch (error) {
+    // Если ошибка авторизации и это не запрос авторизации, перенаправляем на страницу входа
+    if (error.status === 401 && !endpoint.includes('/auth/')) {
+      localStorage.removeItem('authToken');
+      window.location.href = '/login';
+    }
+
+    throw error;
+  }
+}
+
+// Функция для получения QR-кода с обработкой статуса 202
+async function getQrCode(instanceId, onGenerating = null, maxRetries = 5) {
+  try {
+    // Директно используем fetch, чтобы иметь доступ к статусу ответа
+    const response = await fetch(`/api/instances/${instanceId}/qr`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${getAuthToken()}`
+      }
+    });
+
+    // Если статус 202, значит QR-код генерируется
+    if (response.status === 202) {
+      const data = await response.json();
+
+      // Если предоставлен callback для обработки состояния генерации, вызываем его
+      if (typeof onGenerating === 'function') {
+        onGenerating(data);
+      }
+
+      // Если достигнуто максимальное количество попыток, возвращаем null
+      if (maxRetries <= 0) {
+        console.warn('Превышено максимальное количество попыток получения QR-кода');
+        return null;
+      }
+
+      // Ждем 3 секунды и повторяем запрос
+      await new Promise(resolve => setTimeout(resolve, 15000));
+      return getQrCode(instanceId, onGenerating, maxRetries - 1);
+    }
+
+    // Если статус не 200, выбрасываем ошибку
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Ошибка получения QR-кода');
     }
 
     // Возвращаем данные
-    return await response.json();
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error('API Request Error:', error);
-    showAlert(error.message || 'Error communicating with the server', 'danger');
+    console.error('Ошибка при получении QR-кода:', error);
     throw error;
   }
 }
@@ -119,9 +215,21 @@ function formatDate(dateString) {
   }).format(date);
 }
 
+// Выход из системы
+function setupLogout() {
+  const logoutBtn = document.getElementById('logout-btn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      localStorage.removeItem('authToken');
+      window.location.href = '/login';
+    });
+  }
+}
+
 // Функция для выхода
 function logout() {
-  localStorage.removeItem('token');
+  localStorage.removeItem('authToken');
   localStorage.removeItem('apiKey');
   localStorage.removeItem('user');
   window.location.href = '/login';
@@ -153,9 +261,23 @@ function getUrlParam(param) {
 
 // Функция для получения ID из пути URL (для routes с :id)
 function getIdFromPath() {
-  const path = window.location.pathname;
-  const parts = path.split('/');
-  return parts[parts.length - 1];
+  const pathParts = window.location.pathname.split('/');
+  const excludedPages = ['chat', 'contacts', 'edit', 'details'];
+
+  // Ищем индекс страницы среди исключенных
+  const pageIndex = pathParts.findIndex(part => excludedPages.includes(part));
+
+  // Если страница найдена, возвращаем предыдущий элемент
+  if (pageIndex > -1) {
+    return pathParts[pageIndex - 1];
+  }
+
+  // Если мы на странице деталей инстанса, берем последний элемент
+  if (pathParts.includes('instance') && pathParts.length > 2) {
+    return pathParts[pathParts.length - 1];
+  }
+
+  return null;
 }
 
 // Утилита для обновления статуса инстанса в UI
@@ -288,6 +410,42 @@ async function updateInstanceStatus(instanceId, statusElement) {
     console.error('Ошибка при обновлении статуса:', error);
     return null;
   }
+}
+
+// Показать уведомление
+function showAlert(message, type = 'info', duration = 3000) {
+  // Проверяем, существует ли уже контейнер для уведомлений
+  let alertContainer = document.querySelector('.alert-container');
+
+  // Если нет, создаем его
+  if (!alertContainer) {
+    alertContainer = document.createElement('div');
+    alertContainer.className = 'alert-container';
+    document.body.appendChild(alertContainer);
+  }
+
+  // Создаем элемент уведомления
+  const alertElement = document.createElement('div');
+  alertElement.className = `alert alert-${type}`;
+  alertElement.textContent = message;
+
+  // Добавляем его в контейнер
+  alertContainer.appendChild(alertElement);
+
+  // Анимация появления
+  setTimeout(() => {
+    alertElement.classList.add('show');
+  }, 10);
+
+  // Автоматическое закрытие через указанное время
+  setTimeout(() => {
+    alertElement.classList.remove('show');
+
+    // Удаляем элемент после завершения анимации
+    setTimeout(() => {
+      alertContainer.removeChild(alertElement);
+    }, 300);
+  }, duration);
 }
 
 // Инициализация при загрузке страницы

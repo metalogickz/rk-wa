@@ -91,6 +91,22 @@ class InstanceController {
    * @param {object} res - Ответ
    * @param {function} next - Следующий middleware
    */
+  async getInstanceStatus(req, res, next) {
+    try {
+      const instanceId = req.params.instanceId;
+      const status = await instanceService.getInstanceStatus(instanceId);
+      res.json(status);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Получить все инстансы пользователя
+   * @param {object} req - Запрос
+   * @param {object} res - Ответ
+   * @param {function} next - Следующий middleware
+   */
   async getUserInstances(req, res, next) {
     try {
       // Аналогично используем req.user.id
@@ -114,9 +130,17 @@ class InstanceController {
     try {
       const instanceId = req.params.instanceId;
 
-      const qrCode = await instanceService.getInstanceQrCode(instanceId);
+      const result = await instanceService.getInstanceQrCode(instanceId);
 
-      res.json(qrCode);
+      // Проверяем, вернулся ли QR-код или статус генерации
+      if (result.status === "generating") {
+        return res.status(202).json({
+          message: result.message,
+          status: result.status
+        });
+      }
+
+      res.json(result);
     } catch (error) {
       next(error);
     }
@@ -193,7 +217,7 @@ class InstanceController {
  */
   async getLatestEvents(req, res, next) {
     try {
-      
+
       const instanceId = req.params.instanceId;
       const { since, limit = 20, types = '' } = req.query;
 

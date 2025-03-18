@@ -1,18 +1,20 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Контакты - WhatsApp API</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
   <div class="navbar">
     <div class="nav-container">
       <div class="nav-title">WhatsApp API Manager</div>
       <ul class="nav-links">
-        <li><a href="/instances">Инстансы</a></li>
-        <li><a href="/stats">Статистика</a></li>
+        <li><a href="/ui/instances">Инстансы</a></li>
+        <li><a href="/ui/stats">Статистика</a></li>
         <li><span id="user-info"></span> <a href="#" id="logout-btn">(Выйти)</a></li>
       </ul>
     </div>
@@ -20,7 +22,7 @@
 
   <div class="container">
     <div class="mb-20">
-      <a href="/instances" class="btn btn-secondary">&larr; Назад к списку</a>
+      <a href="/ui/instances" class="btn btn-secondary">&larr; Назад к списку</a>
     </div>
 
     <div id="loading" class="text-center">
@@ -54,6 +56,26 @@
             <!-- Контакты будут загружены динамически -->
           </tbody>
         </table>
+
+        <div class="card mt-20">
+          <h2 class="card-title">Добавить новый контакт</h2>
+          <form id="add-contact-form" class="form-group">
+            <div class="flex">
+              <div class="flex-grow mr-10">
+                <label>Номер телефона</label>
+                <input type="text" id="contact-phone" class="form-control" placeholder="Введите номер телефона"
+                  required>
+              </div>
+              <div class="flex-grow">
+                <label>Имя (необязательно)</label>
+                <input type="text" id="contact-name" class="form-control" placeholder="Введите имя контакта">
+              </div>
+            </div>
+            <div class="mt-10">
+              <button type="submit" class="btn">Добавить контакт</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </div>
@@ -62,7 +84,7 @@
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const instanceId = getIdFromPath();
-      
+
       // Элементы страницы
       const loadingElement = document.getElementById('loading');
       const contactsContainer = document.getElementById('contacts-container');
@@ -70,32 +92,74 @@
       const contactsTableBody = document.getElementById('contacts-table-body');
       const contactSearch = document.getElementById('contact-search');
       const statusContainer = document.getElementById('status-container');
-      
+
       try {
         // Загружаем данные инстанса
         const instanceData = await fetchAPI(`/instances/${instanceId}`);
         instanceNameElement.textContent = instanceData.name;
-        
+
         // Обновляем индикатор статуса
         updateStatusIndicator(instanceData.status);
-        
+
         // Загружаем контакты
         await loadContacts();
-        
+
         // Скрываем загрузку и показываем контакты
         loadingElement.classList.add('hidden');
         contactsContainer.classList.remove('hidden');
-        
+
         // Начинаем периодически обновлять статус инстанса
         setInterval(updateInstanceStatus, 5000);
-        
+
         // Обработчик поиска
         contactSearch.addEventListener('input', filterContacts);
       } catch (error) {
         loadingElement.classList.add('hidden');
         showAlert(`Ошибка при загрузке данных: ${error.message}`, 'danger');
       }
-      
+
+      const addContactForm = document.getElementById('add-contact-form');
+      const contactPhoneInput = document.getElementById('contact-phone');
+      const contactNameInput = document.getElementById('contact-name');
+
+      addContactForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const phone = contactPhoneInput.value.trim();
+        const name = contactNameInput.value.trim();
+
+        if (!phone) {
+          showAlert('Введите номер телефона', 'danger');
+          return;
+        }
+
+        try {
+          // Отправляем запрос на добавление контакта
+          // ВАЖНО: Вам нужно будет реализовать этот эндпоинт в бэкенде
+          await fetchAPI(`/instances/${instanceId}/contacts/add`, {
+            method: 'POST',
+            body: JSON.stringify({ phone, name })
+          });
+
+          showAlert('Контакт успешно добавлен', 'success');
+
+          // Очищаем поля
+          contactPhoneInput.value = '';
+          contactNameInput.value = '';
+
+          // Перезагружаем список контактов
+          await loadContacts();
+        } catch (error) {
+          showAlert(`Ошибка при добавлении контакта: ${error.message}`, 'danger');
+        }
+      });
+
+      // Форматирование номера телефона при вводе
+      contactPhoneInput.addEventListener('input', function () {
+        // Удаляем все кроме цифр
+        this.value = this.value.replace(/\D/g, '');
+      });
+
       // Функция для загрузки контактов
       async function loadContacts() {
         try {
@@ -105,10 +169,10 @@
               <td colspan="4" class="text-center">Загрузка контактов...</td>
             </tr>
           `;
-          
+
           // Получаем контакты от API
-          const { contacts } = await fetchAPI(`/whatsapp/${instanceId}/contacts`);
-          
+          const { contacts } = await fetchAPI(`/instances/${instanceId}/contacts`);
+
           // Если нет контактов, показываем сообщение
           if (!contacts || contacts.length === 0) {
             contactsTableBody.innerHTML = `
@@ -118,32 +182,32 @@
             `;
             return;
           }
-          
+
           // Сортируем контакты по имени
           contacts.sort((a, b) => {
             const nameA = a.name || a.number;
             const nameB = b.name || b.number;
             return nameA.localeCompare(nameB);
           });
-          
+
           // Очищаем список контактов
           contactsTableBody.innerHTML = '';
-          
+
           // Добавляем контакты в таблицу
           contacts.forEach(contact => {
             const tr = document.createElement('tr');
             tr.dataset.name = contact.name || '';
             tr.dataset.number = contact.number || '';
-            
+
             tr.innerHTML = `
               <td>${contact.name || 'Без имени'}</td>
               <td>${contact.number}</td>
               <td>${contact.isGroup ? 'Группа' : 'Контакт'}</td>
               <td>
-                <a href="/instance/${instanceId}/chat?contact=${contact.id}" class="btn">Написать</a>
+                <a href="/ui/instance/${instanceId}/chat?contact=${contact.id}" class="btn">Написать</a>
               </td>
             `;
-            
+
             contactsTableBody.appendChild(tr);
           });
         } catch (error) {
@@ -155,20 +219,20 @@
               </td>
             </tr>
           `;
-          
+
           document.getElementById('retry-contacts').addEventListener('click', loadContacts);
         }
       }
-      
+
       // Функция для фильтрации контактов
       function filterContacts() {
         const searchTerm = contactSearch.value.toLowerCase();
         const rows = contactsTableBody.querySelectorAll('tr');
-        
+
         rows.forEach(row => {
           const name = (row.dataset.name || '').toLowerCase();
           const number = (row.dataset.number || '').toLowerCase();
-          
+
           // Показываем строку, если имя или номер содержит поисковый запрос
           if (name.includes(searchTerm) || number.includes(searchTerm)) {
             row.style.display = '';
@@ -177,23 +241,23 @@
           }
         });
       }
-      
+
       // Функция для обновления статуса инстанса
       async function updateInstanceStatus() {
         try {
-          const statusData = await fetchAPI(`/whatsapp/${instanceId}/status`);
-          
+          const statusData = await fetchAPI(`/instances/${instanceId}/status`);
+
           // Обновляем индикатор в заголовке
           updateStatusIndicator(statusData.status);
         } catch (error) {
           console.error('Ошибка при обновлении статуса:', error);
         }
       }
-      
+
       // Функция для обновления индикатора статуса в заголовке
       function updateStatusIndicator(status) {
         let html = '';
-        
+
         if (status === 'connected') {
           html = `<div class="status-badge status-connected">Подключено</div>`;
         } else if (status === 'connecting') {
@@ -203,10 +267,11 @@
         } else {
           html = `<div class="status-badge status-disconnected">Отключено</div>`;
         }
-        
+
         statusContainer.innerHTML = html;
       }
     });
   </script>
 </body>
+
 </html>

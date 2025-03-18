@@ -123,6 +123,10 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/login.html'));
 });
 
+app.get('/ui/profile', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/profile.html'));
+});
+
 app.get('/ui/instances', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/instances.html'));
 });
@@ -140,11 +144,11 @@ app.get('/ui/instance/edit/:id', (req, res) => {
 });
 
 app.get('/ui/instance/:id/chat', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/chat.html'));
+  res.sendFile(path.join(__dirname, '../public/chat.html'));
 });
 
 app.get('/ui/instance/:id/contacts', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/contacts.html'));
+  res.sendFile(path.join(__dirname, '../public/contacts.html'));
 });
 
 app.get('/ui/stats', (req, res) => {

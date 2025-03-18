@@ -61,6 +61,9 @@ router.put('/instances/:instanceId', authMiddleware, instanceController.updateIn
 // Удалить инстанс
 router.delete('/instances/:instanceId', authMiddleware, instanceController.deleteInstance);
 
+// Получить статус инстанса
+router.get('/instances/:instanceId/status', authMiddleware, instanceController.getInstanceStatus);
+
 // Переподключить инстанс
 router.post('/instances/:instanceId/reconnect', authMiddleware, instanceController.reconnectInstance);
 
@@ -72,6 +75,14 @@ router.get('/instances/:instanceId/activity', authMiddleware, instanceController
 
 // Получить QR-код для инстанса
 router.get('/instances/:instanceId/qr', authMiddleware, instanceController.getInstanceQrCode);
+
+// Получить контакты
+router.get('/instances/:instanceId/contacts', authMiddleware, whatsappController.getContacts);
+
+router.post('/instances/:instanceId/contacts/add', authMiddleware, whatsappController.addContact);
+
+// Отправить сообщение
+router.post('/instances/:instanceId/send', authMiddleware, whatsappController.sendMessage);
 
 // Получить историю сообщений чата
 router.get('/instances/:instanceId/chats/:chatId/messages', authMiddleware, instanceController.getChatHistory);

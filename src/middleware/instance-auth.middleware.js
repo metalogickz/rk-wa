@@ -23,16 +23,22 @@ async function instanceAuthMiddleware(req, res, next) {
       return res.status(400).json({ error: 'Instance ID is required' });
     }
     
-    // Находим пользователя по API ключу
-    const user = await prisma.user.findUnique({
-      where: { apiKey }
-    });
+    // Объявляем user с помощью let, чтобы можно было изменить
+    let user = null;
     
-    // Если API-ключ не прошел, проверяем JWT
+    // Находим пользователя по API ключу, если он предоставлен
+    if (apiKey) {
+      user = await prisma.user.findUnique({
+        where: { apiKey }
+      });
+    }
+    
+    // Если API-ключ не сработал, используем пользователя из предыдущего middleware (JWT)
     if (!user && req.user) {
       user = req.user;
     }
     
+    // Если пользователя нет, возвращаем ошибку
     if (!user) {
       logger.warn('API request without valid authentication', { 
         ip: req.ip, 
@@ -44,12 +50,22 @@ async function instanceAuthMiddleware(req, res, next) {
     // Проверяем, принадлежит ли инстанс пользователю
     const instance = await prisma.instance.findUnique({
       where: {
-        id: instanceId,
-        userId: user.id
+        id: instanceId
       }
     });
     
+    // Проверяем существование инстанса
     if (!instance) {
+      logger.warn('API request to non-existent instance', {
+        ip: req.ip,
+        endpoint: req.originalUrl,
+        instanceId
+      });
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+    
+    // Проверяем принадлежность инстанса пользователю
+    if (instance.userId !== user.id && !user.isAdmin) {
       logger.warn('API request to instance not owned by user', { 
         ip: req.ip, 
         endpoint: req.originalUrl,

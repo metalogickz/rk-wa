@@ -294,6 +294,44 @@ class InstanceService {
   }
 
   /**
+ * Получить статус инстанса
+ * @param {string} instanceId - ID инстанса
+ * @returns {Promise<object>} Статус инстанса
+ */
+  async getInstanceStatus(instanceId) {
+    try {
+      const prisma = dbConnector.getClient();
+
+      // Проверяем существование инстанса
+      const instance = await prisma.instance.findUnique({
+        where: { id: instanceId }
+      });
+
+      if (!instance) {
+        throw new Error(`Instance ${instanceId} not found`);
+      }
+
+      // Получаем статус из WhatsApp Manager
+      const connectionStatus = whatsappManager.getInstanceStatus(instanceId);
+
+      // Объединяем информацию из базы данных и WhatsApp Manager
+      return {
+        instanceId,
+        status: instance.status,
+        ready: connectionStatus.ready,
+        hasQr: connectionStatus.hasQr,
+        lastActivity: instance.lastActivity,
+        connectionDetails: connectionStatus
+      };
+    } catch (error) {
+      logger.error(`Error getting status for instance ${instanceId}`, {
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Получить все инстансы пользователя
    * @param {string} userId - ID пользователя
    * @returns {Promise<array>} Массив инстансов
@@ -336,10 +374,10 @@ class InstanceService {
   }
 
   /**
-   * Получить QR-код для инстанса
-   * @param {string} instanceId - ID инстанса
-   * @returns {Promise<object>} QR-код
-   */
+ * Получить QR-код для инстанса с повторной попыткой при ошибках
+ * @param {string} instanceId - ID инстанса
+ * @returns {Promise<object>} QR-код
+ */
   async getInstanceQrCode(instanceId) {
     try {
       const prisma = dbConnector.getClient();
@@ -352,11 +390,67 @@ class InstanceService {
         throw new Error(`Instance ${instanceId} not found`);
       }
 
-      // Получаем QR-код от менеджера
-      const qrCode = whatsappManager.getInstanceQrCode(instanceId);
+      // Если статус "logged_out", сначала сбрасываем его на "disconnected"
+      if (instance.status === 'logged_out') {
+        logger.info(`Resetting instance status from logged_out to disconnected for ${instanceId}`);
+        await prisma.instance.update({
+          where: { id: instanceId },
+          data: {
+            status: 'disconnected',
+            qrCode: null
+          }
+        });
+      }
 
+      // Получаем QR-код от менеджера
+      let qrCode = whatsappManager.getInstanceQrCode(instanceId);
+
+      // Если QR-кода нет, пробуем инициализировать инстанс
       if (!qrCode) {
-        throw new Error(`QR code not available for instance ${instanceId}`);
+        logger.info(`QR code not available for instance ${instanceId}, attempting to initialize instance`);
+
+        // Инициализируем инстанс для генерации QR-кода
+        await whatsappManager.initInstance(instanceId);
+
+        // Ждем 5 секунд, чтобы QR-код сгенерировался
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Пробуем получить QR-код снова
+        qrCode = whatsappManager.getInstanceQrCode(instanceId);
+
+        // Если QR все еще не получен, делаем вторую попытку через еще 5 секунд
+        if (!qrCode) {
+          logger.info(`QR code still not available after first attempt, waiting more for ${instanceId}`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          qrCode = whatsappManager.getInstanceQrCode(instanceId);
+        }
+
+        // Если QR-код все еще не доступен, возвращаем статус генерации
+        if (!qrCode) {
+          logger.warn(`Failed to generate QR code for instance ${instanceId} after initialization`);
+
+          // Обновляем статус в базе данных, чтобы форсировать новую попытку
+          const currentStatus = await prisma.instance.findUnique({
+            where: { id: instanceId },
+            select: { status: true }
+          });
+
+          // Если статус "error" или "logged_out", меняем его на "disconnected"
+          if (currentStatus && (currentStatus.status === 'error' || currentStatus.status === 'logged_out')) {
+            await prisma.instance.update({
+              where: { id: instanceId },
+              data: {
+                status: 'disconnected',
+                qrCode: null
+              }
+            });
+          }
+
+          return {
+            message: "QR code generation in progress. Please try again in a few seconds.",
+            status: "generating"
+          };
+        }
       }
 
       return { qrCode };

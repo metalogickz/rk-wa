@@ -122,41 +122,39 @@ class WhatsAppManager {
   }
 
   /**
-   * Инициализировать новый инстанс WhatsApp
-   * @param {string} instanceId - ID инстанса
-   */
+ * Инициализировать новый инстанс WhatsApp
+ * @param {string} instanceId - ID инстанса
+ * @returns {Promise<object>} - Объект инстанса
+ */
   async initInstance(instanceId) {
     try {
-      // Добавляем проверку существующих инстансов с тем же ID
-      const existingInstances = Array.from(this.instances.entries())
-        .filter(([id]) => id === instanceId);
-
-      if (existingInstances.length > 0) {
-        logger.warn(`DIAGNOSTIC: Found ${existingInstances.length} existing instances with ID ${instanceId}. Removing...`);
-
-        for (const [id, instanceObj] of existingInstances) {
-          try {
-            if (instanceObj.socket) {
-              await instanceObj.socket.logout();
-            }
-            this.instances.delete(id);
-          } catch (error) {
-            logger.error(`Error removing existing instance ${id}`, {
-              error: error.message
-            });
-          }
-        }
-      }
-
-      // Проверяем, не инициализирован ли уже этот инстанс
+      // Проверка существующих экземпляров с тем же ID
       if (this.instances.has(instanceId)) {
-        logger.warn(`DIAGNOSTIC: Instance ${instanceId} already exists in memory. Stopping existing instance.`);
-
-        // Останавливаем существующий инстанс
         const existingInstance = this.instances.get(instanceId);
-        if (existingInstance && existingInstance.socket) {
-          await existingInstance.socket.logout();
+
+        // Если экземпляр уже инициализирован и в статусе connected или qr_received, возвращаем его
+        if (existingInstance.status === 'connected' || existingInstance.status === 'qr_received') {
+          logger.info(`Instance ${instanceId} already initialized with status: ${existingInstance.status}`);
+          return existingInstance;
+        }
+
+        // Если экземпляр в процессе подключения, просто возвращаем его
+        if (existingInstance.status === 'connecting') {
+          logger.info(`Instance ${instanceId} is currently connecting`);
+          return existingInstance;
+        }
+
+        // В остальных случаях останавливаем существующий экземпляр
+        logger.info(`Stopping existing instance ${instanceId} with status: ${existingInstance.status}`);
+        try {
+          if (existingInstance.socket) {
+            await existingInstance.socket.logout();
+          }
           this.instances.delete(instanceId);
+        } catch (error) {
+          logger.error(`Error stopping existing instance ${instanceId}`, {
+            error: error.message
+          });
         }
       }
 
@@ -167,10 +165,10 @@ class WhatsAppManager {
       });
 
       if (!instance) {
-        throw new Error(`DIAGNOSTIC: Instance ${instanceId} not found in database`);
+        throw new Error(`Instance ${instanceId} not found in database`);
       }
 
-      logger.info(`DIAGNOSTIC: Initializing instance ${instanceId} with current status: ${instance.status}`);
+      logger.info(`Initializing instance ${instanceId} with current status: ${instance.status}`);
 
       // Создаем директорию для данных инстанса
       const instancePath = this.getInstancePath(instanceId);
@@ -184,7 +182,7 @@ class WhatsAppManager {
       // Получаем последнюю версию Baileys
       const { version } = await fetchLatestBaileysVersion();
 
-      // Создаем логгер для Baileys (тихий режим)
+      // Создаем логгер для Baileys
       const baileysLogger = pino({ level: 'silent' });
 
       // Создаем сокет WhatsApp
@@ -196,11 +194,10 @@ class WhatsAppManager {
         },
         printQRInTerminal: false,
         logger: baileysLogger,
-        browser: ['AeroBook WhatsApp', 'Chrome', '10.0.0'],
+        browser: ['WhatsApp API', 'Chrome', '110.0.0'],
         syncFullHistory: false,
         markOnlineOnConnect: false,
-        transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 },
-        getMessage: async () => { return { conversation: 'hello' } }
+        transactionOpts: { maxCommitRetries: 10, delayBetweenTriesMs: 3000 }
       });
 
       // Создаем объект инстанса
@@ -212,7 +209,8 @@ class WhatsAppManager {
         webhookQueue: [],
         webhookProcessing: false,
         lastActivity: new Date(),
-        retryTimers: new Map()
+        retryTimers: new Map(),
+        qrGenerationAttempts: 0  // Счетчик попыток генерации QR-кода
       };
 
       // Добавляем инстанс в карту
@@ -220,6 +218,23 @@ class WhatsAppManager {
 
       // Настраиваем обработчики событий
       this.setupEventHandlers(instanceId, sock, saveCreds);
+
+      // Устанавливаем таймер для проверки, был ли сгенерирован QR-код
+      setTimeout(async () => {
+        const currentInstance = this.instances.get(instanceId);
+        if (currentInstance && !currentInstance.qrCode && currentInstance.status === 'connecting') {
+          logger.warn(`QR code not generated for instance ${instanceId} after timeout, retrying`);
+
+          // Пробуем переинициализировать
+          try {
+            await this.reconnectInstance(instanceId);
+          } catch (error) {
+            logger.error(`Error reconnecting instance ${instanceId}`, {
+              error: error.message
+            });
+          }
+        }
+      }, 10000);  // 10 секунд - таймаут для генерации QR-кода
 
       // Обновляем статус в базе данных
       await prisma.instance.update({
@@ -230,11 +245,11 @@ class WhatsAppManager {
         }
       });
 
-      logger.info(`DIAGNOSTIC: WhatsApp instance ${instanceId} initialized successfully`);
+      logger.info(`WhatsApp instance ${instanceId} initialized successfully`);
 
       return instanceObj;
     } catch (error) {
-      logger.error(`DIAGNOSTIC: Error initializing WhatsApp instance ${instanceId}`, {
+      logger.error(`Error initializing WhatsApp instance ${instanceId}`, {
         error: error.message,
         stack: error.stack
       });
@@ -249,7 +264,7 @@ class WhatsAppManager {
           }
         });
       } catch (statusUpdateError) {
-        logger.error('DIAGNOSTIC: Error updating instance status', {
+        logger.error('Error updating instance status', {
           error: statusUpdateError.message
         });
       }
@@ -280,43 +295,33 @@ class WhatsAppManager {
 
       // Обработка QR-кода
       if (qr) {
-        qrGenerationCount++;
+        // Увеличиваем счетчик попыток генерации QR
+        instanceObj.qrGenerationAttempts = (instanceObj.qrGenerationAttempts || 0) + 1;
 
-        logger.warn(`DIAGNOSTIC: QR Code generation attempt #${qrGenerationCount} for instance ${instanceId}`, {
-          currentStatus: instanceObj.status,
-          qrLength: qr.length
-        });
+        logger.info(`QR Code received for instance ${instanceId} (attempt ${instanceObj.qrGenerationAttempts})`);
 
-        // Ограничиваем количество генераций QR
-        if (qrGenerationCount > 1) {
-          logger.error(`CRITICAL: Multiple QR generations detected for instance ${instanceId}`);
-
-          // Попытка остановить текущий сокет
-          // try {
-          //   await sock.logout();
-          // } catch (logoutError) {
-          //   logger.error(`Error during forced logout`, {
-          //     error: logoutError.message
-          //   });
-          // }
-
-          // // Удаляем инстанс из карты
-          // this.instances.delete(instanceId);
-
-          // return;
-        }
-
+        // Сохраняем QR-код в объекте инстанса
         instanceObj.qrCode = qr;
         instanceObj.status = 'qr_received';
 
-        qrcode.generate(qr, { small: true });
-
+        // Обновляем статус и QR-код в базе данных
         try {
           await prisma.instance.update({
             where: { id: instanceId },
             data: {
               status: 'qr_received',
               qrCode: qr
+            }
+          });
+
+          // Логируем получение QR
+          await prisma.activityLog.create({
+            data: {
+              instanceId,
+              action: 'qr_received',
+              details: dbConnector.activeProvider === 'sqlite'
+                ? JSON.stringify({ attempt: instanceObj.qrGenerationAttempts })
+                : { attempt: instanceObj.qrGenerationAttempts }
             }
           });
         } catch (error) {
@@ -329,53 +334,87 @@ class WhatsAppManager {
       // Обработка изменений соединения
       if (connection) {
         if (connection === 'close') {
-          const shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
-            lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+          // Определяем причину разрыва соединения
+          const statusCode = lastDisconnect?.error?.output?.statusCode;
+          const reason = lastDisconnect?.error?.output?.payload?.message || 'Unknown';
 
-          instanceObj.status = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut
-            ? 'logged_out'
-            : 'disconnected';
+          // Определяем, нужно ли пытаться переподключиться автоматически
+          // Стандартная логика для shouldReconnect
+          let shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
+            statusCode !== DisconnectReason.loggedOut;
+
+          // Дополнительная логика: всегда пытаемся переподключиться при ошибке "Connection Failure"
+          if (reason === 'Connection Failure') {
+            shouldReconnect = true;
+            logger.info(`Force reconnect enabled for Connection Failure in instance ${instanceId}`);
+          }
+
+          // Обновляем статус в объекте
+          instanceObj.status = statusCode === DisconnectReason.loggedOut ? 'logged_out' : 'disconnected';
 
           logger.info(`WhatsApp connection closed for instance ${instanceId}`, {
-            reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown',
+            reason: reason,
             willReconnect: shouldReconnect
           });
+
+          // Обновляем статус в базе данных
+          try {
+            await prisma.instance.update({
+              where: { id: instanceId },
+              data: {
+                status: instanceObj.status,
+                qrCode: null  // Очищаем QR-код при отключении
+              }
+            });
+
+            // Логируем отключение
+            await prisma.activityLog.create({
+              data: {
+                instanceId,
+                action: 'disconnected',
+                details: dbConnector.activeProvider === 'sqlite'
+                  ? JSON.stringify({ reason: reason })
+                  : { reason: reason }
+              }
+            });
+          } catch (error) {
+            logger.error(`Error updating status for instance ${instanceId}`, {
+              error: error.message
+            });
+          }
+
+          // Если нужно переподключиться, делаем это после задержки
+          if (shouldReconnect) {
+            // Увеличиваем задержку до 10 секунд для более стабильного переподключения
+            setTimeout(() => {
+              logger.info(`Attempting to reconnect instance ${instanceId}`);
+
+              // Полный перезапуск инстанса
+              this.instances.delete(instanceId); // Удаляем старый инстанс из карты
+
+              // Инициализируем инстанс заново
+              this.initInstance(instanceId).catch(error => {
+                logger.error(`Error reinitializing instance ${instanceId}`, {
+                  error: error.message
+                });
+              });
+            }, 10000);
+          } else {
+            // Если не нужно переподключаться, удаляем экземпляр из карты
+            this.instances.delete(instanceId);
+          }
         }
         else if (connection === 'open') {
           logger.info(`WhatsApp client connected for instance ${instanceId}`);
 
+          // Сбрасываем счетчик попыток генерации QR
+          instanceObj.qrGenerationAttempts = 0;
+
+          // Обновляем статус
           instanceObj.status = 'connected';
-          instanceObj.qrCode = null;
+          instanceObj.qrCode = null;  // Очищаем QR-код при подключении
 
           try {
-            // Явное сохранение credentials
-            const instancePath = this.getInstancePath(instanceId);
-            const authPath = path.join(instancePath, 'auth');
-
-            // Создаем директорию, если она не существует
-            fs.mkdirSync(authPath, { recursive: true });
-
-            // Путь к файлу credentials
-            const credsPath = path.join(authPath, 'creds.json');
-
-            // Сохраняем credentials с явным указанием даты создания
-            const credentialsToSave = {
-              ...sock.authState.creds,
-              creation_timestamp: new Date().toISOString()
-            };
-
-            // Безопасная запись с блокировкой
-            const writeStream = fs.createWriteStream(credsPath, { flags: 'w' });
-            writeStream.write(JSON.stringify(credentialsToSave, null, 2));
-            writeStream.end();
-
-            await new Promise((resolve, reject) => {
-              writeStream.on('finish', resolve);
-              writeStream.on('error', reject);
-            });
-
-            logger.info(`Credentials saved for instance ${instanceId}`);
-
             // Обновляем статус в базе данных
             await prisma.instance.update({
               where: { id: instanceId },
@@ -385,10 +424,20 @@ class WhatsAppManager {
                 lastActivity: new Date()
               }
             });
+
+            // Логируем подключение
+            await prisma.activityLog.create({
+              data: {
+                instanceId,
+                action: 'connected',
+                details: dbConnector.activeProvider === 'sqlite'
+                  ? JSON.stringify({})
+                  : {}
+              }
+            });
           } catch (error) {
-            logger.error(`Error saving credentials for instance ${instanceId}`, {
-              error: error.message,
-              stack: error.stack
+            logger.error(`Error updating status for instance ${instanceId}`, {
+              error: error.message
             });
           }
         }
@@ -1379,9 +1428,10 @@ class WhatsAppManager {
     }
 
     try {
-      // Получаем контакты
-      const contacts = Object.values(instanceObj.socket.contacts)
-        .filter(c => c.id.endsWith('@s.whatsapp.net'));
+      // Проверяем наличие contacts и его тип
+      const contacts = instanceObj.socket.contacts
+        ? Object.values(instanceObj.socket.contacts).filter(c => c && c.id && c.id.endsWith('@s.whatsapp.net'))
+        : [];
 
       // Форматируем контакты
       const contactsList = contacts.map(contact => ({
@@ -1396,12 +1446,14 @@ class WhatsAppManager {
       try {
         if (instanceObj.socket.groupMetadata) {
           const groupsMap = instanceObj.socket.groupMetadata;
-          groups = Object.values(groupsMap).map(group => ({
-            id: group.id,
-            name: group.subject || '',
-            number: group.id.split('@')[0],
-            isGroup: true
-          }));
+          groups = Object.values(groupsMap)
+            .filter(group => group && group.id)
+            .map(group => ({
+              id: group.id,
+              name: group.subject || '',
+              number: group.id.split('@')[0],
+              isGroup: true
+            }));
         }
       } catch (error) {
         logger.warn(`Error getting groups for instance ${instanceId}`, {
@@ -1409,13 +1461,63 @@ class WhatsAppManager {
         });
       }
 
-      return [...contactsList, ...groups];
+      const result = [...contactsList, ...groups];
+
+      // Если контактов нет, возвращаем пустой массив
+      return result.length > 0
+        ? { contacts: result }
+        : { contacts: [] };
     } catch (error) {
       logger.error(`Error getting contacts for instance ${instanceId}`, {
         error: error.message,
         stack: error.stack
       });
 
+      // Возвращаем пустой массив контактов вместо выброса ошибки
+      return { contacts: [] };
+    }
+  }
+
+    /**
+   * Отправить медиа из файла
+   * @param {string} instanceId - ID инстанса
+   * @param {string} phone - Номер телефона
+   * @param {string} name - Имя
+   * @returns {Promise<object>} Результат отправки
+   */
+
+  async addContact(instanceId, phone, name = '') {
+    const instanceObj = this.instances.get(instanceId);
+    if (!instanceObj || instanceObj.status !== 'connected') {
+      throw new Error(`Instance ${instanceId} not ready`);
+    }
+
+    try {
+      // Форматируем номер для WhatsApp
+      const formattedPhone = this.formatNumber(phone);
+
+      // Добавление контакта через Baileys
+      const result = await instanceObj.socket.sendMessage(formattedPhone, {
+        text: `Привет! Этот контакт был добавлен через WhatsApp API.`
+      });
+
+      // Логируем действие
+      logger.info(`Contact added for instance ${instanceId}`, { phone, name });
+
+      return {
+        success: true,
+        message: 'Контакт успешно добавлен',
+        contact: {
+          id: formattedPhone,
+          number: phone,
+          name
+        }
+      };
+    } catch (error) {
+      logger.error(`Error adding contact for instance ${instanceId}`, {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
