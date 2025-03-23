@@ -568,18 +568,36 @@ class WhatsAppManager {
             }
           };
 
-          // Сохраняем сообщение
-          await instanceService.saveMessage(instanceId, messageData);
+          // Асинхронно сохраняем сообщение, не блокируя основной процесс
+          instanceService.saveMessage(instanceId, messageData)
+            .then(() => {
+              logger.debug(`Message saved to database for instance ${instanceId}`);
+            })
+            .catch(error => {
+              logger.error(`Error saving message for instance ${instanceId}`, {
+                error: error.message
+              });
+            });
 
-          // Трекинг метрики
-          usageMonitor.trackMetric(instanceId, 'messagesReceived');
-
-          if (media) {
-            usageMonitor.trackMetric(instanceId, 'mediaReceived');
-            usageMonitor.trackMetric(instanceId, 'mediaSize', media.data.length * 0.75); // приблизительно из base64
+          // Также можно асинхронно сохранить контакт
+          try {
+            const contactService = require('./contact.service');
+            contactService.getOrCreateContact(instanceId, from, message.pushName)
+              .then(() => {
+                logger.debug(`Contact saved/updated for instance ${instanceId}`);
+              })
+              .catch(contactError => {
+                logger.warn(`Contact save error for instance ${instanceId}`, {
+                  error: contactError.message
+                });
+              });
+          } catch (contactImportError) {
+            logger.warn(`Contact import error for instance ${instanceId}`, {
+              error: contactImportError.message
+            });
           }
         } catch (error) {
-          logger.error(`Error saving message for instance ${instanceId}`, {
+          logger.error(`Error in database integration for instance ${instanceId}`, {
             error: error.message,
             messageId: message.key.id
           });
@@ -1121,16 +1139,37 @@ class WhatsAppManager {
           }
         };
 
-        // Сохраняем сообщение
-        await instanceService.saveMessage(instanceId, messageData);
+        // Асинхронно сохраняем сообщение
+        instanceService.saveMessage(instanceId, messageData)
+          .then(() => {
+            logger.debug(`Sent message saved to database for instance ${instanceId}`);
+          })
+          .catch(error => {
+            logger.error(`Error saving sent message for instance ${instanceId}`, {
+              error: error.message
+            });
+          });
 
-        // Обновляем статистику
-        await instanceService.updateMessageStats(instanceId, { sent: 1, received: 0 });
-        usageMonitor.trackMetric(instanceId, 'messagesSent');
+        // Также можно асинхронно сохранить контакт
+        try {
+          const contactService = require('./contact.service');
+          contactService.getOrCreateContact(instanceId, chatId)
+            .then(() => {
+              logger.debug(`Contact saved/updated for sent message in instance ${instanceId}`);
+            })
+            .catch(contactError => {
+              logger.warn(`Contact save error for sent message in instance ${instanceId}`, {
+                error: contactError.message
+              });
+            });
+        } catch (contactImportError) {
+          logger.warn(`Contact import error for sent message in instance ${instanceId}`, {
+            error: contactImportError.message
+          });
+        }
       } catch (error) {
-        logger.error(`Error saving sent message for instance ${instanceId}`, {
-          error: error.message,
-          messageId: result.key.id
+        logger.error(`Error in database integration for sent message in instance ${instanceId}`, {
+          error: error.message
         });
       }
 
@@ -1243,18 +1282,19 @@ class WhatsAppManager {
           }
         };
 
-        // Сохраняем сообщение
-        await instanceService.saveMessage(instanceId, messageDataForDb);
-
-        // Обновляем статистику
-        await instanceService.updateMessageStats(instanceId, { sent: 1, received: 0 });
-        // Трекинг метрики с размером файла
-        usageMonitor.trackMetric(instanceId, 'mediaSent');
-        usageMonitor.trackMetric(instanceId, 'mediaSize', buffer.length);
+        // Асинхронно сохраняем сообщение
+        instanceService.saveMessage(instanceId, messageDataForDb)
+          .then(() => {
+            logger.debug(`Sent media message saved to database for instance ${instanceId}`);
+          })
+          .catch(error => {
+            logger.error(`Error saving sent media message for instance ${instanceId}`, {
+              error: error.message
+            });
+          });
       } catch (error) {
-        logger.error(`Error saving sent media message for instance ${instanceId}`, {
-          error: error.message,
-          messageId: result.key.id
+        logger.error(`Error in database integration for sent media message in instance ${instanceId}`, {
+          error: error.message
         });
       }
 
@@ -1478,13 +1518,13 @@ class WhatsAppManager {
     }
   }
 
-    /**
-   * Отправить медиа из файла
-   * @param {string} instanceId - ID инстанса
-   * @param {string} phone - Номер телефона
-   * @param {string} name - Имя
-   * @returns {Promise<object>} Результат отправки
-   */
+  /**
+ * Отправить медиа из файла
+ * @param {string} instanceId - ID инстанса
+ * @param {string} phone - Номер телефона
+ * @param {string} name - Имя
+ * @returns {Promise<object>} Результат отправки
+ */
 
   async addContact(instanceId, phone, name = '') {
     const instanceObj = this.instances.get(instanceId);

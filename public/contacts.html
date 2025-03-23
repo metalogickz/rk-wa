@@ -38,8 +38,13 @@
       <div class="card mb-20">
         <div class="flex justify-between items-center">
           <h2 class="card-title">Список контактов</h2>
-          <div>
+          <div class="flex">
             <input type="text" id="contact-search" class="form-control" placeholder="Поиск по имени или номеру">
+            <button id="import-contacts-btn" class="btn ml-10" style="margin-left: 10px;">Импортировать контакты</button>
+            <select id="contact-source" class="form-control ml-10" style="margin-left: 10px; width: auto;">
+              <option value="whatsapp">WhatsApp</option>
+              <option value="database">База данных</option>
+            </select>
           </div>
         </div>
 
@@ -49,6 +54,7 @@
               <th>Имя</th>
               <th>Номер телефона</th>
               <th>Тип</th>
+              <th>Последняя активность</th>
               <th>Действия</th>
             </tr>
           </thead>
@@ -56,26 +62,28 @@
             <!-- Контакты будут загружены динамически -->
           </tbody>
         </table>
-
-        <div class="card mt-20">
-          <h2 class="card-title">Добавить новый контакт</h2>
-          <form id="add-contact-form" class="form-group">
-            <div class="flex">
-              <div class="flex-grow mr-10">
-                <label>Номер телефона</label>
-                <input type="text" id="contact-phone" class="form-control" placeholder="Введите номер телефона"
-                  required>
-              </div>
-              <div class="flex-grow">
-                <label>Имя (необязательно)</label>
-                <input type="text" id="contact-name" class="form-control" placeholder="Введите имя контакта">
-              </div>
-            </div>
-            <div class="mt-10">
-              <button type="submit" class="btn">Добавить контакт</button>
-            </div>
-          </form>
+        <div id="contacts-pagination" class="pagination">
+          <!-- Пагинация для контактов из базы данных -->
         </div>
+      </div>
+
+      <div class="card mt-20">
+        <h2 class="card-title">Добавить новый контакт</h2>
+        <form id="add-contact-form" class="form-group">
+          <div class="flex" style="gap: 10px;">
+            <div class="flex-grow">
+              <label>Номер телефона</label>
+              <input type="text" id="contact-phone" class="form-control" placeholder="Введите номер телефона" required>
+            </div>
+            <div class="flex-grow">
+              <label>Имя (необязательно)</label>
+              <input type="text" id="contact-name" class="form-control" placeholder="Введите имя контакта">
+            </div>
+          </div>
+          <div class="mt-10" style="margin-top: 10px;">
+            <button type="submit" class="btn">Добавить контакт</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -92,6 +100,18 @@
       const contactsTableBody = document.getElementById('contacts-table-body');
       const contactSearch = document.getElementById('contact-search');
       const statusContainer = document.getElementById('status-container');
+      const contactSourceSelect = document.getElementById('contact-source');
+      const importContactsBtn = document.getElementById('import-contacts-btn');
+      const contactsPagination = document.getElementById('contacts-pagination');
+
+      // Текущие настройки отображения
+      const state = {
+        source: 'whatsapp',  // whatsapp или database
+        page: 1,
+        limit: 25,
+        totalContacts: 0,
+        searchTerm: ''
+      };
 
       try {
         // Загружаем данные инстанса
@@ -101,7 +121,7 @@
         // Обновляем индикатор статуса
         updateStatusIndicator(instanceData.status);
 
-        // Загружаем контакты
+        // Загружаем контакты из WhatsApp (по умолчанию)
         await loadContacts();
 
         // Скрываем загрузку и показываем контакты
@@ -111,8 +131,62 @@
         // Начинаем периодически обновлять статус инстанса
         setInterval(updateInstanceStatus, 5000);
 
+        // Обработчик переключения источника контактов
+        contactSourceSelect.addEventListener('change', async (e) => {
+          state.source = e.target.value;
+          state.page = 1; // Сбрасываем на первую страницу
+          await loadContacts();
+        });
+
+        // Обработчик импорта контактов
+        importContactsBtn.addEventListener('click', async () => {
+          try {
+            importContactsBtn.disabled = true;
+            importContactsBtn.textContent = 'Импортирую...';
+
+            const result = await fetchAPI(`/instances/${instanceId}/contacts/import`, {
+              method: 'POST'
+            });
+
+            showAlert(`Успешно импортировано ${result.importedCount} контактов`, 'success');
+            
+            // Если текущий источник - база данных, перезагружаем контакты
+            if (state.source === 'database') {
+              await loadContacts();
+            }
+          } catch (error) {
+            showAlert(`Ошибка при импорте контактов: ${error.message}`, 'danger');
+          } finally {
+            importContactsBtn.disabled = false;
+            importContactsBtn.textContent = 'Импортировать контакты';
+          }
+        });
+
         // Обработчик поиска
-        contactSearch.addEventListener('input', filterContacts);
+        contactSearch.addEventListener('input', async (e) => {
+          state.searchTerm = e.target.value;
+          
+          if (state.source === 'whatsapp') {
+            // Для WhatsApp контактов используем клиентскую фильтрацию
+            filterContacts();
+          } else {
+            // Для БД контактов перезагружаем с сервера
+            state.page = 1;
+            await loadContacts();
+          }
+        });
+
+        // Обработчик пагинации
+        contactsPagination.addEventListener('click', async (e) => {
+          if (e.target.tagName === 'BUTTON') {
+            const page = parseInt(e.target.dataset.page);
+            if (page && page !== state.page) {
+              state.page = page;
+              await loadContacts();
+              window.scrollTo(0, 0);
+            }
+          }
+        });
       } catch (error) {
         loadingElement.classList.add('hidden');
         showAlert(`Ошибка при загрузке данных: ${error.message}`, 'danger');
@@ -135,11 +209,21 @@
 
         try {
           // Отправляем запрос на добавление контакта
-          // ВАЖНО: Вам нужно будет реализовать этот эндпоинт в бэкенде
           await fetchAPI(`/instances/${instanceId}/contacts/add`, {
             method: 'POST',
             body: JSON.stringify({ phone, name })
           });
+
+          // Также сохраняем в базу данных
+          try {
+            await fetchAPI(`/instances/${instanceId}/contacts/save`, {
+              method: 'POST',
+              body: JSON.stringify({ number: phone, name })
+            });
+          } catch (dbError) {
+            console.error('Ошибка сохранения в БД:', dbError);
+            // Не уведомляем пользователя, т.к. основная операция успешна
+          }
 
           showAlert('Контакт успешно добавлен', 'success');
 
@@ -166,18 +250,56 @@
           // Отображаем индикатор загрузки
           contactsTableBody.innerHTML = `
             <tr>
-              <td colspan="4" class="text-center">Загрузка контактов...</td>
+              <td colspan="5" class="text-center">Загрузка контактов...</td>
             </tr>
           `;
+          
+          contactsPagination.innerHTML = '';
 
-          // Получаем контакты от API
-          const { contacts } = await fetchAPI(`/instances/${instanceId}/contacts`);
+          let contacts = [];
+          let pagination = null;
+
+          if (state.source === 'whatsapp') {
+            // Получаем контакты из WhatsApp API
+            const result = await fetchAPI(`/instances/${instanceId}/contacts`);
+            contacts = result.contacts || [];
+            
+            // При поиске фильтруем локально
+            if (state.searchTerm) {
+              const searchTerm = state.searchTerm.toLowerCase();
+              contacts = contacts.filter(contact => 
+                (contact.name || '').toLowerCase().includes(searchTerm) ||
+                (contact.number || '').toLowerCase().includes(searchTerm)
+              );
+            }
+          } else {
+            // Получаем контакты из базы данных с пагинацией и поиском
+            const params = new URLSearchParams({
+              limit: state.limit,
+              skip: (state.page - 1) * state.limit,
+              search: state.searchTerm
+            });
+            
+            const result = await fetchAPI(`/instances/${instanceId}/contacts/db?${params}`);
+            contacts = result.contacts || [];
+            pagination = result.pagination;
+            
+            // Сохраняем общее количество
+            state.totalContacts = pagination?.total || 0;
+            
+            // Обновляем пагинацию
+            updatePagination(pagination);
+          }
 
           // Если нет контактов, показываем сообщение
           if (!contacts || contacts.length === 0) {
             contactsTableBody.innerHTML = `
               <tr>
-                <td colspan="4" class="text-center">Нет доступных контактов</td>
+                <td colspan="5" class="text-center">
+                  ${state.source === 'database' 
+                    ? 'Нет контактов в базе данных. Нажмите "Импортировать контакты", чтобы добавить их из WhatsApp.' 
+                    : 'Нет доступных контактов в WhatsApp.'}
+                </td>
               </tr>
             `;
             return;
@@ -185,8 +307,8 @@
 
           // Сортируем контакты по имени
           contacts.sort((a, b) => {
-            const nameA = a.name || a.number;
-            const nameB = b.name || b.number;
+            const nameA = a.name || a.pushName || a.number || '';
+            const nameB = b.name || b.pushName || b.number || '';
             return nameA.localeCompare(nameB);
           });
 
@@ -196,15 +318,22 @@
           // Добавляем контакты в таблицу
           contacts.forEach(contact => {
             const tr = document.createElement('tr');
-            tr.dataset.name = contact.name || '';
+            tr.dataset.name = contact.name || contact.pushName || '';
             tr.dataset.number = contact.number || '';
 
+            // Форматируем дату последней активности
+            let lastActivityDisplay = '-';
+            if (contact.lastActivity) {
+              lastActivityDisplay = formatDate(contact.lastActivity);
+            }
+
             tr.innerHTML = `
-              <td>${contact.name || 'Без имени'}</td>
-              <td>${contact.number}</td>
+              <td>${contact.name || contact.pushName || 'Без имени'}</td>
+              <td>${formatPhoneNumber(contact.number || contact.remoteJid)}</td>
               <td>${contact.isGroup ? 'Группа' : 'Контакт'}</td>
+              <td>${lastActivityDisplay}</td>
               <td>
-                <a href="/ui/instance/${instanceId}/chat?contact=${contact.id}" class="btn">Написать</a>
+                <a href="/ui/instance/${instanceId}/chat?contact=${contact.id || contact.remoteJid}" class="btn">Написать</a>
               </td>
             `;
 
@@ -213,7 +342,7 @@
         } catch (error) {
           contactsTableBody.innerHTML = `
             <tr>
-              <td colspan="4" class="text-center">
+              <td colspan="5" class="text-center">
                 <div>Ошибка при загрузке контактов: ${error.message}</div>
                 <button id="retry-contacts" class="btn">Повторить</button>
               </td>
@@ -224,9 +353,9 @@
         }
       }
 
-      // Функция для фильтрации контактов
+      // Функция для фильтрации контактов на стороне клиента
       function filterContacts() {
-        const searchTerm = contactSearch.value.toLowerCase();
+        const searchTerm = state.searchTerm.toLowerCase();
         const rows = contactsTableBody.querySelectorAll('tr');
 
         rows.forEach(row => {
@@ -252,6 +381,56 @@
         } catch (error) {
           console.error('Ошибка при обновлении статуса:', error);
         }
+      }
+
+      // Функция для обновления пагинации
+      function updatePagination(pagination) {
+        if (!pagination || !pagination.total) {
+          contactsPagination.innerHTML = '';
+          return;
+        }
+
+        const totalPages = Math.ceil(pagination.total / pagination.limit);
+        if (totalPages <= 1) {
+          contactsPagination.innerHTML = '';
+          return;
+        }
+
+        let paginationHTML = '<div class="pagination-controls">';
+        
+        // Кнопка "Предыдущая"
+        paginationHTML += `
+          <button class="btn-pagination ${state.page === 1 ? 'disabled' : ''}" 
+            ${state.page === 1 ? 'disabled' : `data-page="${state.page - 1}"`}>
+            &laquo; Предыдущая
+          </button>
+        `;
+
+        // Показываем максимум 5 страниц
+        const startPage = Math.max(1, state.page - 2);
+        const endPage = Math.min(totalPages, startPage + 4);
+
+        for (let i = startPage; i <= endPage; i++) {
+          paginationHTML += `
+            <button class="btn-pagination ${i === state.page ? 'active' : ''}" 
+              data-page="${i}">
+              ${i}
+            </button>
+          `;
+        }
+
+        // Кнопка "Следующая"
+        paginationHTML += `
+          <button class="btn-pagination ${state.page === totalPages ? 'disabled' : ''}" 
+            ${state.page === totalPages ? 'disabled' : `data-page="${state.page + 1}"`}>
+            Следующая &raquo;
+          </button>
+        `;
+
+        paginationHTML += '</div>';
+        paginationHTML += `<div class="pagination-info">Показано ${Math.min(pagination.total, (state.page - 1) * pagination.limit + 1)}-${Math.min(pagination.total, state.page * pagination.limit)} из ${pagination.total}</div>`;
+
+        contactsPagination.innerHTML = paginationHTML;
       }
 
       // Функция для обновления индикатора статуса в заголовке

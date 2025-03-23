@@ -1,6 +1,6 @@
 # Dual Database Support (MongoDB and SQLite)
 
-WhatsApp Multi-Instance API now supports two databases: MongoDB and SQLite. This allows you to choose the optimal solution based on your needs and resources.
+WhatsApp Multi-Instance API supports two database types: MongoDB and SQLite. This allows you to choose the optimal solution based on your needs and resources.
 
 ## Database Comparison
 
@@ -10,7 +10,7 @@ WhatsApp Multi-Instance API now supports two databases: MongoDB and SQLite. This
 | Resource requirements | High | Low |
 | Distributed deployment | Yes | No |
 | Configuration | Complex | Simple |
-| Backup | Complex | Simple (single file) |
+| Backup | Simple (single file) | Simple (single file) |
 | Server load | Medium | Low |
 | Horizontal scaling | Yes | No |
 
@@ -18,7 +18,7 @@ WhatsApp Multi-Instance API now supports two databases: MongoDB and SQLite. This
 
 ### 1. Environment Variables
 
-To support both databases, add the following variables to your `.env` file:
+To support both databases, the following variables are used in `.env` file:
 
 ```
 # Database provider selection: mongodb or sqlite
@@ -31,19 +31,18 @@ DATABASE_URL="mongodb://username:password@localhost:27017/whatsapp-api?authSourc
 SQLITE_DATABASE_URL="file:./data/whatsapp-api.db"
 ```
 
+You can see examples of these configurations in the `.env` and `.env.docker` files provided with the project.
+
 ### 2. Database Initialization
 
-To initialize both databases, run the following commands:
+The database is automatically initialized when the application starts. The initialization process is managed by the `DBConnector` class which handles:
 
-```bash
-# Generate Prisma clients for both database types
-npm run prisma:generate:all
+- Creating the database directory (for SQLite)
+- Backing up existing database files (for SQLite)
+- Running Prisma migrations
+- Creating an initial admin user
 
-# Initialize databases and create admin user
-node scripts/init-databases.js
-```
-
-The `init-databases.js` script will create necessary tables/collections in both databases and create an initial admin user.
+You can also manually initialize the database by running the application with the appropriate DATABASE_PROVIDER environment variable set.
 
 ## Switching Between Databases
 
@@ -64,32 +63,29 @@ curl -X POST http://localhost:3000/api/db/switch \
   -d '{"provider": "sqlite"}'
 ```
 
+The API will:
+1. Disconnect from the current database
+2. Switch to the new provider
+3. Initialize the connection to the new database
+4. Update the environment variable for subsequent restarts
+
 ### Method 2: By Modifying .env File
 
 You can manually change the `DATABASE_PROVIDER` value in the `.env` file, then restart the server.
 
-### Method 3: Command Line Utility
+## Working with JSON Data
 
-A special utility is provided for convenient switching:
+Since SQLite doesn't support native JSON storage, the application handles JSON data conversion automatically:
 
-```bash
-node scripts/switch-database.js
-```
+1. The `DBConnector` class provides a `handleJsonData()` method that serializes and deserializes JSON data
+2. When storing JSON in SQLite, it's converted to a string representation
+3. When retrieving JSON from SQLite, it's parsed back into objects
+4. This is handled transparently in services like `instance.service.js` and others
 
-This utility will interactively guide you through the database switching process.
-
-## Migrating Data Between Databases
-
-If you already have data in one database and want to transfer it to another, you can use the migration script:
-
-```bash
-node scripts/migrate-database.js
-```
-
-The script provides an interactive interface that allows you to:
-1. Choose the migration direction (MongoDB → SQLite or SQLite → MongoDB)
-2. Select data types to migrate (users, instances, messages, etc.)
-3. Set limits for large datasets (messages, activity logs)
+This affects several data types:
+- Webhook headers
+- Message metadata
+- Activity log details
 
 ## Usage Specifics
 
@@ -108,14 +104,6 @@ The script provides an interactive interface that allows you to:
 - All data stored locally, simplifying backup
 - Has limitations on parallel queries and larger data volumes
 
-## Working with JSON Data
-
-Since SQLite doesn't support native JSON storage:
-
-1. JSON data is automatically serialized/deserialized when writing/reading
-2. Some filtering operations in SQLite may work slower if they use fields inside JSON
-3. The number of nested transactions in SQLite is limited
-
 ## Backup
 
 ### MongoDB
@@ -132,11 +120,27 @@ mongorestore --uri="mongodb://username:password@localhost:27017/whatsapp-api" ./
 
 ### SQLite
 
-For SQLite, backup is simply copying the database file:
+For SQLite, backup is handled automatically during initialization, creating timestamped backup files. You can also manually copy the database file:
 
 ```bash
 # Assuming the database file path is ./data/whatsapp-api.db
 cp ./data/whatsapp-api.db ./backup/whatsapp-api-$(date +%Y%m%d).db
+```
+
+## Docker Support
+
+The project includes Docker support for both database types. When using Docker:
+
+1. You can specify the database provider in the docker-compose.yml file
+2. The container will automatically initialize the chosen database
+3. SQLite data is stored in a persistent volume
+
+Example from docker-compose.yml:
+```yaml
+environment:
+  - DATABASE_PROVIDER=sqlite
+  - DATABASE_URL=mongodb://whatsapp:whatsapp-password@mongodb:27017/whatsapp-api?authSource=admin
+  - SQLITE_DATABASE_URL=file:/usr/src/app/data/whatsapp-api.db
 ```
 
 ## Recommendations
@@ -162,9 +166,13 @@ cp ./data/whatsapp-api.db ./backup/whatsapp-api-$(date +%Y%m%d).db
 
 ## Monitoring
 
-For database operation monitoring:
+The API's `/health` endpoint includes information about the current database provider and connection status.
 
-- **MongoDB**: Use MongoDB Compass or MongoDB Atlas for monitoring
-- **SQLite**: Use SQLite Browser for viewing and editing data
-
-The API's `/health` endpoint includes information about the current database provider
+Sample response:
+```json
+{
+  "status": "ok",
+  "timestamp": "2023-01-01T12:00:00.000Z",
+  "dbProvider": "sqlite"
+}
+```

@@ -74,6 +74,8 @@ model Instance {
   InstanceUsage InstanceUsage[]
 
   UsageLimit UsageLimit[]
+
+  Contact Contact[]
 }
 
 model InstanceUsage {
@@ -174,6 +176,29 @@ model Message {
 
   @@index([instanceId, remoteJid, createdAt])
   @@index([instanceId, messageId])
+}
+
+model Contact {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  instanceId String   @db.ObjectId
+  instance  Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  
+  name      String?
+  number    String
+  remoteJid String   // Полный JID (номер@s.whatsapp.net или группа@g.us)
+  pushName  String?  // Имя, установленное пользователем в WhatsApp
+  isGroup   Boolean  @default(false)
+  
+  profilePicture String?
+  about          String?
+  lastActivity   DateTime?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([instanceId, remoteJid])
+  @@index([instanceId])
+  @@index([number])
 }
 
 // Модель для логов активности

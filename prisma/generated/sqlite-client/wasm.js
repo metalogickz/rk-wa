@@ -181,6 +181,21 @@ exports.Prisma.MessageScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
+exports.Prisma.ContactScalarFieldEnum = {
+  id: 'id',
+  instanceId: 'instanceId',
+  name: 'name',
+  number: 'number',
+  remoteJid: 'remoteJid',
+  pushName: 'pushName',
+  isGroup: 'isGroup',
+  profilePicture: 'profilePicture',
+  about: 'about',
+  lastActivity: 'lastActivity',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
 exports.Prisma.ActivityLogScalarFieldEnum = {
   id: 'id',
   instanceId: 'instanceId',
@@ -252,6 +267,7 @@ exports.Prisma.ModelName = {
   Instance: 'Instance',
   WebhookSettings: 'WebhookSettings',
   Message: 'Message',
+  Contact: 'Contact',
   ActivityLog: 'ActivityLog',
   WebhookLog: 'WebhookLog',
   InstanceUsage: 'InstanceUsage',

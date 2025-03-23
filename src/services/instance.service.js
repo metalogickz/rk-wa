@@ -665,11 +665,11 @@ class InstanceService {
   }
 
   /**
-   * Сохранить сообщение в базе данных
-   * @param {string} instanceId - ID инстанса
-   * @param {object} messageData - Данные сообщения
-   * @returns {Promise<object>} Сохраненное сообщение
-   */
+ * Сохранить сообщение в базе данных (для добавления в instanceService.js)
+ * @param {string} instanceId - ID инстанса
+ * @param {object} messageData - Данные сообщения
+ * @returns {Promise<object>} Сохраненное сообщение
+ */
   async saveMessage(instanceId, messageData) {
     try {
       const prisma = dbConnector.getClient();
@@ -680,6 +680,7 @@ class InstanceService {
         ? JSON.stringify(metadata)
         : metadata;
 
+      // Создаем сообщение
       const message = await prisma.message.create({
         data: {
           instanceId,
@@ -710,7 +711,8 @@ class InstanceService {
         error: error.message,
         messageData
       });
-      throw error;
+      // Возвращаем null вместо выброса ошибки, чтобы не прерывать основной процесс
+      return null;
     }
   }
 

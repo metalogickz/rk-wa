@@ -125,7 +125,23 @@ class WhatsAppController {
     try {
       const instanceId = req.params.instanceId;
 
+      // Получаем контакты из WhatsApp через существующий механизм
       const { contacts } = await whatsappManager.getContacts(instanceId);
+
+      // Асинхронно сохраняем контакты в базу данных, не блокируя ответ
+      if (contacts && contacts.length > 0) {
+        const contactService = require('../services/contact.service');
+        contactService.importContacts(instanceId, contacts)
+          .then(count => {
+            logger.info(`Asynchronously imported ${count} contacts for instance ${instanceId}`);
+          })
+          .catch(error => {
+            logger.error(`Failed to import contacts for instance ${instanceId}`, {
+              error: error.message
+            });
+          });
+      }
+
       res.json({ contacts });
     } catch (error) {
       // Если произошла непредвиденная ошибка, возвращаем пустой массив
@@ -148,8 +164,23 @@ class WhatsAppController {
         return res.status(400).json({ error: 'Номер телефона обязателен' });
       }
 
-      // Здесь должна быть логика добавления контакта через WhatsApp
+      // Добавляем через WhatsApp API
       const result = await whatsappManager.addContact(instanceId, phone, name);
+
+      // Сохраняем контакт в базу данных
+      try {
+        const contactService = require('../services/contact.service');
+        const remoteJid = whatsappManager.formatNumber(phone);
+        await contactService.saveContact(instanceId, {
+          remoteJid,
+          number: phone,
+          name,
+          isGroup: false
+        });
+      } catch (contactError) {
+        logger.warn(`Error saving contact to database: ${contactError.message}`);
+        // Не блокируем основной процесс
+      }
 
       res.json(result);
     } catch (error) {

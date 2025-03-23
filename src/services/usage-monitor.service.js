@@ -1,9 +1,7 @@
-const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 const os = require('os');
 const whatsappManager = require('./whatsapp-manager.service');
-
-const prisma = new PrismaClient();
+const dbConnector = require('../utils/db-connector');
 
 class UsageMonitorService {
   constructor() {
@@ -41,6 +39,8 @@ class UsageMonitorService {
 
   // Сохранение текущих метрик в базу данных
   async saveMetrics() {
+    const prisma = dbConnector.getClient();
+    
     for (const [instanceId, metrics] of this.instanceMetrics.entries()) {
       try {
         // Формируем дату без времени (только год-месяц-день)
@@ -48,44 +48,87 @@ class UsageMonitorService {
         today.setHours(0, 0, 0, 0);
 
         // Проверяем существование записи
-        const existingUsage = await prisma.instanceUsage.findUnique({
-          where: {
-            instance_usage_date: {
-              instanceId,
+        // Разные подходы для MongoDB и SQLite
+        if (dbConnector.activeProvider === 'mongodb') {
+          // Для MongoDB используем findFirst вместо findUnique по составному ключу
+          const existingUsage = await prisma.instanceUsage.findFirst({
+            where: {
+              instanceId: instanceId,
               date: today
             }
-          }
-        });
+          });
 
-        if (existingUsage) {
-          // Обновляем существующую запись
-          await prisma.instanceUsage.update({
-            where: { id: existingUsage.id },
-            data: {
-              messagesSent: { increment: metrics.messagesSent },
-              messagesReceived: { increment: metrics.messagesReceived },
-              mediaSent: { increment: metrics.mediaSent },
-              mediaReceived: { increment: metrics.mediaReceived },
-              totalMediaSize: { increment: metrics.mediaSize },
-              apiCalls: { increment: metrics.apiCalls },
-              webhookSent: { increment: metrics.webhookCalls }
-            }
-          });
+          if (existingUsage) {
+            // Обновляем существующую запись
+            await prisma.instanceUsage.update({
+              where: { id: existingUsage.id },
+              data: {
+                messagesSent: { increment: metrics.messagesSent },
+                messagesReceived: { increment: metrics.messagesReceived },
+                mediaSent: { increment: metrics.mediaSent },
+                mediaReceived: { increment: metrics.mediaReceived },
+                totalMediaSize: { increment: metrics.mediaSize },
+                apiCalls: { increment: metrics.apiCalls },
+                webhookSent: { increment: metrics.webhookCalls }
+              }
+            });
+          } else {
+            // Создаем новую запись
+            await prisma.instanceUsage.create({
+              data: {
+                instanceId,
+                date: today,
+                messagesSent: metrics.messagesSent,
+                messagesReceived: metrics.messagesReceived,
+                mediaSent: metrics.mediaSent,
+                mediaReceived: metrics.mediaReceived,
+                totalMediaSize: metrics.mediaSize,
+                apiCalls: metrics.apiCalls,
+                webhookSent: metrics.webhookCalls
+              }
+            });
+          }
         } else {
-          // Создаем новую запись
-          await prisma.instanceUsage.create({
-            data: {
-              instanceId,
-              date: today,
-              messagesSent: metrics.messagesSent,
-              messagesReceived: metrics.messagesReceived,
-              mediaSent: metrics.mediaSent,
-              mediaReceived: metrics.mediaReceived,
-              totalMediaSize: metrics.mediaSize,
-              apiCalls: metrics.apiCalls,
-              webhookSent: metrics.webhookCalls
+          // Для SQLite используем составной ключ
+          const existingUsage = await prisma.instanceUsage.findUnique({
+            where: {
+              instance_usage_date: {
+                instanceId,
+                date: today
+              }
             }
           });
+
+          if (existingUsage) {
+            // Обновляем существующую запись
+            await prisma.instanceUsage.update({
+              where: { id: existingUsage.id },
+              data: {
+                messagesSent: { increment: metrics.messagesSent },
+                messagesReceived: { increment: metrics.messagesReceived },
+                mediaSent: { increment: metrics.mediaSent },
+                mediaReceived: { increment: metrics.mediaReceived },
+                totalMediaSize: { increment: metrics.mediaSize },
+                apiCalls: { increment: metrics.apiCalls },
+                webhookSent: { increment: metrics.webhookCalls }
+              }
+            });
+          } else {
+            // Создаем новую запись
+            await prisma.instanceUsage.create({
+              data: {
+                instanceId,
+                date: today,
+                messagesSent: metrics.messagesSent,
+                messagesReceived: metrics.messagesReceived,
+                mediaSent: metrics.mediaSent,
+                mediaReceived: metrics.mediaReceived,
+                totalMediaSize: metrics.mediaSize,
+                apiCalls: metrics.apiCalls,
+                webhookSent: metrics.webhookCalls
+              }
+            });
+          }
         }
 
         // Очищаем метрики после сохранения
@@ -108,6 +151,8 @@ class UsageMonitorService {
   // Проверка превышения лимитов
   async checkUsageLimits() {
     try {
+      const prisma = dbConnector.getClient();
+      
       // Получаем всех активных пользователей с инстансами
       const users = await prisma.user.findMany({
         where: {
@@ -151,6 +196,7 @@ class UsageMonitorService {
           const periodStart = new Date();
           periodStart.setHours(periodStart.getHours() - effectiveLimits.timeWindowHours);
 
+          // Используем findMany для всех провайдеров БД
           const usage = await prisma.instanceUsage.findMany({
             where: {
               instanceId: instance.id,
@@ -236,12 +282,9 @@ class UsageMonitorService {
                 }
               });
 
-              // Регистрируем активность
-              await prisma.activityLog.create({
-                data: {
-                  instanceId: instance.id,
-                  action: 'limit_exceeded',
-                  details: {
+              // Подготавливаем детали в зависимости от типа БД
+              const details = dbConnector.activeProvider === 'sqlite'
+                ? JSON.stringify({
                     exceededLimits,
                     usage: totalUsage,
                     limits: {
@@ -254,7 +297,28 @@ class UsageMonitorService {
                       maxWebhookCalls: effectiveLimits.maxWebhookCalls
                     },
                     timeWindowHours: effectiveLimits.timeWindowHours
-                  }
+                  })
+                : {
+                    exceededLimits,
+                    usage: totalUsage,
+                    limits: {
+                      maxMessagesSent: effectiveLimits.maxMessagesSent,
+                      maxMessagesReceived: effectiveLimits.maxMessagesReceived,
+                      maxMediaSent: effectiveLimits.maxMediaSent,
+                      maxMediaReceived: effectiveLimits.maxMediaReceived,
+                      maxMediaSize: effectiveLimits.maxMediaSize,
+                      maxApiCalls: effectiveLimits.maxApiCalls,
+                      maxWebhookCalls: effectiveLimits.maxWebhookCalls
+                    },
+                    timeWindowHours: effectiveLimits.timeWindowHours
+                  };
+
+              // Регистрируем активность
+              await prisma.activityLog.create({
+                data: {
+                  instanceId: instance.id,
+                  action: 'limit_exceeded',
+                  details
                 }
               });
 
@@ -287,9 +351,8 @@ class UsageMonitorService {
   // Получение системных метрик для всех инстансов
   async collectSystemMetrics() {
     try {
-      // Исправляем циклическую зависимость, импортируя модуль здесь
-      const whatsappManager = require('./whatsapp-manager.service');
-
+      const prisma = dbConnector.getClient();
+      
       // Получаем все активные инстансы
       const instances = await prisma.instance.findMany({
         where: { status: 'connected' }
@@ -315,19 +378,45 @@ class UsageMonitorService {
         const cpuEnd = process.cpuUsage(cpuStart);
         const cpuUsage = (cpuEnd.user + cpuEnd.system) / 1000000; // в секундах
 
-        // Сохраняем системные метрики
-        await prisma.instanceUsage.updateMany({
-          where: {
-            instanceId: instance.id,
-            date: {
-              gte: new Date(new Date().setHours(0, 0, 0, 0))
+        // Получаем текущую дату
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (dbConnector.activeProvider === 'mongodb') {
+          // Для MongoDB используем upsert
+          const usage = await prisma.instanceUsage.findFirst({
+            where: {
+              instanceId: instance.id,
+              date: {
+                gte: today
+              }
             }
-          },
-          data: {
-            memoryUsage: heapTotal,
-            cpuUsage
+          });
+
+          if (usage) {
+            await prisma.instanceUsage.update({
+              where: { id: usage.id },
+              data: {
+                memoryUsage: heapTotal,
+                cpuUsage
+              }
+            });
           }
-        });
+        } else {
+          // Для SQLite используем обновление
+          await prisma.instanceUsage.updateMany({
+            where: {
+              instanceId: instance.id,
+              date: {
+                gte: today
+              }
+            },
+            data: {
+              memoryUsage: heapTotal,
+              cpuUsage
+            }
+          });
+        }
       }
     } catch (error) {
       logger.error('Error collecting system metrics', {

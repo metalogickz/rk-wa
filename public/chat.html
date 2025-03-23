@@ -231,7 +231,8 @@
           </div>
         </div>
         <div class="chat-panel">
-          <div id="no-contact-selected" class="no-contact-selected" style="font-size: 14px; height: auto; padding: 20px;">
+          <div id="no-contact-selected" class="no-contact-selected"
+            style="font-size: 14px; height: auto; padding: 20px;">
             <div>Выберите контакт слева</div>
           </div>
           <div id="active-chat" class="hidden" style="display: flex; flex-direction: column; height: 100%;">
@@ -340,7 +341,8 @@
         showAlert(`Ошибка при загрузке данных: ${error.message}`, 'danger');
       }
 
-      addManualContactBtn.addEventListener('click', () => {
+      // Обработчик для добавления контакта вручную
+      addManualContactBtn.addEventListener('click', async () => {
         const phone = manualContactPhone.value.trim();
         const name = manualContactName.value.trim() || phone;
 
@@ -352,36 +354,62 @@
         // Очищаем номер от лишних символов
         const cleanedPhone = phone.replace(/\D/g, '');
 
-        // Создаем объект контакта
-        const newContact = {
-          id: `${cleanedPhone}@s.whatsapp.net`,
-          number: cleanedPhone,
-          name: name
-        };
+        try {
+          // Показываем индикатор загрузки
+          addManualContactBtn.disabled = true;
+          addManualContactBtn.textContent = 'Добавление...';
 
-        // Добавляем в список контактов
-        const contactElement = document.createElement('div');
-        contactElement.className = 'contact-item';
-        contactElement.dataset.jid = newContact.id;
-        contactElement.dataset.phone = newContact.number;
-        contactElement.dataset.name = newContact.name;
+          // Создаем объект контакта
+          const newContact = {
+            id: `${cleanedPhone}@s.whatsapp.net`,
+            number: cleanedPhone,
+            name: name
+          };
 
-        contactElement.innerHTML = `
-          <div><strong>${newContact.name}</strong></div>
-          <div class="contact-phone">${newContact.number}</div>
-        `;
+          // 1. Пытаемся добавить контакт в WhatsApp (если инстанс подключен)
+          try {
+            await fetchAPI(`/instances/${instanceId}/contacts/add`, {
+              method: 'POST',
+              body: JSON.stringify({ phone: cleanedPhone, name })
+            });
+          } catch (waError) {
+            console.warn('Ошибка добавления контакта в WhatsApp:', waError.message);
+            // Не показываем ошибку пользователю сразу, т.к. мы еще попробуем добавить в базу
+          }
 
-        // Добавляем обработчик клика
-        contactElement.addEventListener('click', () => selectContact(newContact));
+          // 2. Добавляем контакт в базу данных
+          try {
+            await fetchAPI(`/instances/${instanceId}/contacts/save`, {
+              method: 'POST',
+              body: JSON.stringify({
+                number: cleanedPhone,
+                name: name,
+                remoteJid: newContact.id
+              })
+            });
+          } catch (dbError) {
+            console.warn('Ошибка добавления контакта в базу данных:', dbError.message);
+            // Если не удалось добавить в WhatsApp и в базу, показываем ошибку
+            if (waError) {
+              throw new Error('Не удалось добавить контакт. Проверьте подключение инстанса.');
+            }
+          }
 
-        // Добавляем в список контактов
-        contactsListElement.appendChild(contactElement);
+          // Перезагружаем список контактов
+          await loadContacts();
 
-        // Очищаем поля ввода
-        manualContactPhone.value = '';
-        manualContactName.value = '';
+          // Очищаем поля ввода
+          manualContactPhone.value = '';
+          manualContactName.value = '';
 
-        showAlert(`Контакт ${name} добавлен`, 'success');
+          showAlert(`Контакт ${name} добавлен`, 'success');
+        } catch (error) {
+          showAlert(`Ошибка: ${error.message}`, 'danger');
+        } finally {
+          // Восстанавливаем кнопку
+          addManualContactBtn.disabled = false;
+          addManualContactBtn.textContent = 'Добавить контакт';
+        }
       });
 
       // Форматирование номера телефона при вводе
@@ -405,22 +433,71 @@
         }
       }
 
-      // Функция для загрузки контактов
+      // Функция для загрузки контактов из обоих источников
       async function loadContacts() {
         try {
           contactsListElement.innerHTML = '<div class="text-center" style="padding: 20px;"><p>Загрузка контактов...</p></div>';
 
-          // Получаем контакты от API
-          const { contacts } = await fetchAPI(`/instances/${instanceId}/contacts`);
+          // Список для хранения всех контактов
+          let allContacts = [];
+
+          try {
+            // Получаем контакты из базы данных
+            const dbContactsResponse = await fetchAPI(`/instances/${instanceId}/contacts/db`);
+            const dbContacts = dbContactsResponse.contacts || [];
+
+            // Преобразуем контакты из базы данных в правильный формат
+            const formattedDbContacts = dbContacts.map(contact => ({
+              id: contact.remoteJid,
+              number: contact.number,
+              name: contact.name || contact.pushName || contact.number,
+              lastActivity: contact.lastActivity
+            }));
+
+            allContacts = [...formattedDbContacts];
+          } catch (dbError) {
+            console.warn('Ошибка при загрузке контактов из БД:', dbError);
+            // Продолжаем выполнение, чтобы попробовать загрузить контакты из WhatsApp
+          }
+
+          try {
+            // Получаем контакты от WhatsApp API
+            const whatsappContactsResponse = await fetchAPI(`/instances/${instanceId}/contacts`);
+            const whatsappContacts = whatsappContactsResponse.contacts || [];
+
+            // Объединяем с имеющимися контактами, избегая дубликатов
+            for (const whatsappContact of whatsappContacts) {
+              const existingIndex = allContacts.findIndex(c => c.id === whatsappContact.id);
+
+              if (existingIndex >= 0) {
+                // Обновляем имеющийся контакт данными из WhatsApp
+                allContacts[existingIndex] = {
+                  ...allContacts[existingIndex],
+                  ...whatsappContact,
+                  // Сохраняем имя, которое может быть в БД
+                  name: allContacts[existingIndex].name || whatsappContact.name || whatsappContact.number
+                };
+              } else {
+                // Добавляем новый контакт
+                allContacts.push(whatsappContact);
+              }
+            }
+          } catch (waError) {
+            console.warn('Ошибка при загрузке контактов из WhatsApp:', waError);
+            // Если у нас есть контакты из БД, продолжаем с ними
+            if (allContacts.length === 0) {
+              throw waError; // Если нет контактов вообще, выбрасываем ошибку
+            }
+          }
 
           // Если нет контактов, показываем сообщение
-          if (!contacts || contacts.length === 0) {
+          if (allContacts.length === 0) {
             contactsListElement.innerHTML = '<div class="text-center" style="padding: 20px;"><p>Нет доступных контактов</p></div>';
             return;
           }
 
           // Сортируем контакты по имени
-          contacts.sort((a, b) => {
+          allContacts.sort((a, b) => {
             const nameA = a.name || a.number;
             const nameB = b.name || b.number;
             return nameA.localeCompare(nameB);
@@ -429,17 +506,36 @@
           // Очищаем список контактов и добавляем новые
           contactsListElement.innerHTML = '';
 
-          contacts.forEach(contact => {
+          allContacts.forEach(contact => {
             const contactElement = document.createElement('div');
             contactElement.className = 'contact-item';
             contactElement.dataset.jid = contact.id;
             contactElement.dataset.phone = contact.number;
             contactElement.dataset.name = contact.name || contact.number;
 
+            // Форматируем последнюю активность, если есть
+            let lastActivityHTML = '';
+            if (contact.lastActivity) {
+              const lastActivityDate = new Date(contact.lastActivity);
+              const today = new Date();
+              let formattedActivity;
+
+              if (lastActivityDate.toDateString() === today.toDateString()) {
+                // Сегодня: показываем только время
+                formattedActivity = lastActivityDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              } else {
+                // Другой день: показываем дату
+                formattedActivity = lastActivityDate.toLocaleDateString();
+              }
+
+              lastActivityHTML = `<small class="contact-last-activity">Активность: ${formattedActivity}</small>`;
+            }
+
             contactElement.innerHTML = `
-              <div><strong>${contact.name || 'Без имени'}</strong></div>
-              <div class="contact-phone">${contact.number}</div>
-            `;
+        <div><strong>${contact.name || 'Без имени'}</strong></div>
+        <div class="contact-phone">${formatPhoneNumber(contact.number)}</div>
+        ${lastActivityHTML}
+      `;
 
             // Добавляем обработчик клика
             contactElement.addEventListener('click', () => selectContact(contact));
@@ -456,11 +552,11 @@
           }
         } catch (error) {
           contactsListElement.innerHTML = `
-            <div class="text-center" style="padding: 20px;">
-              <p>Ошибка при загрузке контактов: ${error.message}</p>
-              <button id="retry-contacts" class="btn">Повторить</button>
-            </div>
-          `;
+      <div class="text-center" style="padding: 20px;">
+        <p>Ошибка при загрузке контактов: ${error.message}</p>
+        <button id="retry-contacts" class="btn">Повторить</button>
+      </div>
+    `;
 
           document.getElementById('retry-contacts').addEventListener('click', loadContacts);
         }
@@ -538,6 +634,7 @@
       }
 
       // Функция для загрузки истории чата
+      // Функция для загрузки истории чата
       async function loadChatHistory() {
         if (!currentContact) return;
 
@@ -569,11 +666,25 @@
 
           // Прокручиваем до последнего сообщения
           scrollToBottom();
+
+          // После загрузки истории обновляем контакт в базе данных для отметки последней активности
+          try {
+            await fetchAPI(`/instances/${instanceId}/contacts/save`, {
+              method: 'POST',
+              body: JSON.stringify({
+                remoteJid: currentContact.id,
+                lastActivity: new Date().toISOString()
+              })
+            });
+          } catch (updateError) {
+            console.warn('Не удалось обновить время последней активности контакта:', updateError);
+            // Не показываем эту ошибку пользователю, т.к. она некритичная
+          }
         } catch (error) {
           throw error;
         }
       }
-
+      
       // Функция для опроса новых сообщений
       async function pollNewMessages() {
         if (!currentContact || !lastMsgTimestamp) return;

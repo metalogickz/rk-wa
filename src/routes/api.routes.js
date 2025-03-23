@@ -4,6 +4,7 @@ const instanceController = require('../controllers/instance.controller');
 const whatsappController = require('../controllers/whatsapp.controller');
 const authController = require('../controllers/auth.controller');
 const statsController = require('../controllers/stats.controller');
+const contactController = require('../controllers/contact.controller');
 const authMiddleware = require('../middleware/auth.middleware');
 const instanceAuthMiddleware = require('../middleware/instance-auth.middleware');
 const apiKeyAuthMiddleware = require('../middleware/api-key-auth.middleware');
@@ -81,6 +82,15 @@ router.get('/instances/:instanceId/contacts', authMiddleware, whatsappController
 
 router.post('/instances/:instanceId/contacts/add', authMiddleware, whatsappController.addContact);
 
+// Получить контакты из базы данных
+router.get('/instances/:instanceId/contacts/db', authMiddleware, contactController.getContactsFromDB);
+
+// Импортировать контакты из WhatsApp в базу данных
+router.post('/instances/:instanceId/contacts/import', authMiddleware, contactController.importContacts);
+
+// Добавить или обновить контакт в базе данных
+router.post('/instances/:instanceId/contacts/save', authMiddleware, contactController.saveContact);
+
 // Отправить сообщение
 router.post('/instances/:instanceId/send', authMiddleware, whatsappController.sendMessage);
 
@@ -97,6 +107,15 @@ router.get('/whatsapp/:instanceId/status', instanceAuthMiddleware, whatsappContr
 
 // Получить QR-код для инстанса
 router.get('/whatsapp/:instanceId/qr', instanceAuthMiddleware, whatsappController.getQrCode);
+
+// Получить контакты из базы данных через API
+router.get('/whatsapp/:instanceId/contacts/db', instanceAuthMiddleware, contactController.getContactsFromDB);
+
+// Импортировать контакты через API
+router.post('/whatsapp/:instanceId/contacts/import', instanceAuthMiddleware, contactController.importContacts);
+
+// Добавить контакт через API
+router.post('/whatsapp/:instanceId/contacts/save', instanceAuthMiddleware, contactController.saveContact);
 
 // Отправить сообщение
 router.post('/whatsapp/:instanceId/send', instanceAuthMiddleware, whatsappController.sendMessage);

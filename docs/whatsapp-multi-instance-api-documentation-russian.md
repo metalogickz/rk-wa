@@ -1,40 +1,104 @@
-# WhatsApp Multi-Instance API Documentation
+# WhatsApp Multi-Instance API - Документация
 
 ## 📋 Оглавление
 
 1. [Введение](#введение)
-2. [Аутентификация](#аутентификация)
-3. [Управление Инстансами](#управление-инстансами)
-4. [WhatsApp API](#whatsapp-api)
-5. [Статистика](#статистика)
-6. [Webhooks](#webhooks)
-7. [Коды Ошибок](#коды-ошибок)
-8. [Примеры Использования](#примеры-использования)
-9. [Безопасность](#безопасность)
+2. [Начало работы](#начало-работы)
+3. [Аутентификация](#аутентификация)
+4. [Управление инстансами](#управление-инстансами)
+5. [WhatsApp API](#whatsapp-api)
+6. [Контакты](#контакты)
+7. [Чаты и сообщения](#чаты-и-сообщения)
+8. [Статистика и мониторинг](#статистика-и-мониторинг)
+9. [Webhooks](#webhooks)
+10. [Управление базой данных](#управление-базой-данных)
+11. [Коды ошибок](#коды-ошибок)
+12. [Примеры использования](#примеры-использования)
 
 ## 🚀 Введение
 
-WhatsApp Multi-Instance API позволяет управлять несколькими WhatsApp-соединениями в одном приложении. API поддерживает две схемы аутентификации: JWT-токен и API-ключ.
+WhatsApp Multi-Instance API позволяет управлять несколькими WhatsApp-соединениями в одном приложении. API поддерживает две схемы аутентификации: JWT-токен и API-ключ, а также две системы хранения данных: MongoDB и SQLite.
+
+### Ключевые возможности
+
+- Управление несколькими инстансами WhatsApp
+- Отправка и получение текстовых сообщений и медиафайлов
+- Управление контактами
+- Хранение истории сообщений
+- Webhook-уведомления о событиях
+- Статистика использования
+- Поддержка двух типов баз данных (MongoDB/SQLite)
+- Администрирование пользователей
+
+## 🔧 Начало работы
+
+### Системные требования
+
+- Node.js 18.0 или выше
+- MongoDB (опционально)
+- SQLite (опционально)
+
+### Установка с использованием Docker
+
+```bash
+# Клонировать репозиторий
+git clone https://github.com/your-username/whatsapp-multi-instance-api.git
+
+# Перейти в директорию проекта
+cd whatsapp-multi-instance-api
+
+# Запустить с использованием Docker Compose
+docker-compose up -d
+```
+
+### Настройка переменных окружения
+
+Основные настройки конфигурации:
+
+```
+# Тип базы данных
+DATABASE_PROVIDER=sqlite  # mongodb или sqlite
+
+# Настройки MongoDB
+DATABASE_URL=mongodb://username:password@hostname:port/database
+
+# Настройки SQLite
+SQLITE_DATABASE_URL=file:./data/whatsapp-api.db
+
+# Секрет для JWT-токенов
+JWT_SECRET=your-jwt-secret-key-here
+JWT_EXPIRATION=24h
+
+# Данные администратора по умолчанию
+ADMIN_EMAIL=admin@example.com
+ADMIN_PASSWORD=admin123
+ADMIN_FIRST_NAME=Admin
+ADMIN_LAST_NAME=User
+```
 
 ## 🔐 Аутентификация
 
-### Типы Аутентификации
+API поддерживает два метода аутентификации:
 
-#### 1. JWT-токен
-- Авторизация через механизм JSON Web Token
-- Получается при входе в систему
+### JWT-токен
+
+- Токен получается при входе в систему через `/api/auth/login`
 - Передается в заголовке `Authorization: Bearer <token>`
+- Срок действия токена настраивается через `JWT_EXPIRATION`
 
-#### 2. API-ключ
+### API-ключ
+
 - Уникальный ключ, привязанный к пользователю
-- Передается в заголовке `x-api-key`
-- Работает для большинства эндпоинтов
+- Автоматически генерируется при создании пользователя
+- Передается в заголовке `x-api-key: <api_key>`
 
-### Вход в Систему
+### Маршруты аутентификации
+
+#### Вход в систему
 
 **Endpoint:** `POST /api/auth/login`
 
-**Тело Запроса:**
+**Тело запроса:**
 ```json
 {
   "email": "user@example.com",
@@ -42,7 +106,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "token": "jwt.token.here",
@@ -56,7 +120,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Получение Информации о Текущем Пользователе
+#### Получение данных текущего пользователя
 
 **Endpoint:** `GET /api/auth/me`
 
@@ -64,7 +128,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Ответ:**
+**Успешный ответ:**
 ```json
 {
   "id": "user_id",
@@ -74,9 +138,9 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-## 🖥️ Управление Инстансами
+## 🖥️ Управление инстансами
 
-### Создание Инстанса
+### Создание инстанса
 
 **Endpoint:** `POST /api/instances`
 
@@ -84,7 +148,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Тело Запроса:**
+**Тело запроса:**
 ```json
 {
   "name": "Основной WhatsApp",
@@ -97,11 +161,14 @@ WhatsApp Multi-Instance API позволяет управлять несколь
   "notifyRead": false,
   "maxRetries": 3,
   "retryInterval": 60000,
-  "webhookSecret": "optional-secret-key"
+  "webhookSecret": "optional-secret-key",
+  "headers": {
+    "Custom-Header": "custom-value"
+  }
 }
 ```
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "id": "instance_id",
@@ -116,7 +183,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Получение Списка Инстансов
+### Получение списка инстансов
 
 **Endpoint:** `GET /api/instances`
 
@@ -124,7 +191,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "instances": [
@@ -147,7 +214,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Получение Информации о Конкретном Инстансе
+### Получение информации о конкретном инстансе
 
 **Endpoint:** `GET /api/instances/{instanceId}`
 
@@ -155,7 +222,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "id": "instance_id",
@@ -167,12 +234,17 @@ WhatsApp Multi-Instance API позволяет управлять несколь
   "createdAt": "2023-01-01T00:00:00.000Z",
   "updatedAt": "2023-01-01T00:00:00.000Z",
   "webhookSettings": {
+    "instanceId": "instance_id",
     "notifyReceived": true,
     "notifySent": true,
     "notifyDelivery": false,
     "notifyRead": false,
     "maxRetries": 3,
-    "retryInterval": 60000
+    "retryInterval": 60000,
+    "secret": "webhook-secret-key",
+    "headers": {
+      "Custom-Header": "custom-value"
+    }
   },
   "connectionStatus": {
     "ready": true,
@@ -182,7 +254,31 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Обновление Инстанса
+### Получение статуса инстанса
+
+**Endpoint:** `GET /api/instances/{instanceId}/status`
+
+**Заголовки:**
+- `Authorization: Bearer <jwt_token>` или
+- `x-api-key: <api_key>`
+
+**Успешный ответ:**
+```json
+{
+  "instanceId": "instance_id",
+  "status": "connected",
+  "ready": true,
+  "hasQr": false,
+  "lastActivity": "2023-01-01T12:00:00.000Z",
+  "connectionDetails": {
+    "ready": true,
+    "status": "connected",
+    "hasQr": false
+  }
+}
+```
+
+### Обновление инстанса
 
 **Endpoint:** `PUT /api/instances/{instanceId}`
 
@@ -190,7 +286,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Тело Запроса:**
+**Тело запроса:**
 ```json
 {
   "name": "Новое имя WhatsApp",
@@ -204,12 +300,15 @@ WhatsApp Multi-Instance API позволяет управлять несколь
     "notifyRead": true,
     "maxRetries": 5,
     "retryInterval": 30000,
-    "secret": "new-secret-key"
+    "secret": "new-secret-key",
+    "headers": {
+      "New-Custom-Header": "new-value"
+    }
   }
 }
 ```
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "id": "instance_id",
@@ -221,7 +320,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Удаление Инстанса
+### Удаление инстанса
 
 **Endpoint:** `DELETE /api/instances/{instanceId}`
 
@@ -229,7 +328,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "success": true,
@@ -237,7 +336,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Переподключение Инстанса
+### Переподключение инстанса
 
 **Endpoint:** `POST /api/instances/{instanceId}/reconnect`
 
@@ -245,7 +344,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "success": true,
@@ -261,7 +360,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "success": true,
@@ -269,7 +368,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Получение QR-кода для Инстанса
+### Получение QR-кода для инстанса
 
 **Endpoint:** `GET /api/instances/{instanceId}/qr`
 
@@ -277,16 +376,22 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "qrCode": "1@HbT1Ye1Hhb9eB9KRWwRQbz4IP3wK8ocJ35zzr2z25PinMxWkgZ46Vp8l07Wz9Wl5HmdULhQMvn0g==,some-qr-string-data..."
 }
 ```
 
-**Важно:** QR-код возвращается в виде строки, которую нужно использовать для генерации QR-кода, а не в формате base64 как было указано ранее.
+**Ответ в случае генерации:**
+```json
+{
+  "message": "QR code generation in progress. Please try again in a few seconds.",
+  "status": "generating"
+}
+```
 
-### Получение Лога Активности Инстанса
+### Получение лога активности инстанса
 
 **Endpoint:** `GET /api/instances/{instanceId}/activity`
 
@@ -297,20 +402,29 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 **Параметры запроса:**
 - `limit` - количество записей (по умолчанию 100)
 - `skip` - смещение (по умолчанию 0)
-- `actions` - список типов действий через запятую
-- `startDate` - начальная дата (ISO 8601)
-- `endDate` - конечная дата (ISO 8601)
+- `actions` - список типов действий через запятую (например, `connected,disconnected,qr_received`)
+- `startDate` - начальная дата в формате ISO 8601
+- `endDate` - конечная дата в формате ISO 8601
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "logs": [
     {
       "id": "log_id",
       "instanceId": "instance_id",
-      "action": "connection_opened",
+      "action": "connected",
       "details": {},
       "createdAt": "2023-01-01T12:00:00.000Z"
+    },
+    {
+      "id": "log_id",
+      "instanceId": "instance_id",
+      "action": "qr_received",
+      "details": {
+        "attempt": 1
+      },
+      "createdAt": "2023-01-01T11:55:00.000Z"
     }
   ],
   "pagination": {
@@ -322,56 +436,57 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Получение Истории Сообщений Чата
+### Получение последних событий инстанса
 
-**Endpoint:** `GET /api/instances/{instanceId}/chats/{chatId}/messages`
+**Endpoint:** `GET /api/instances/{instanceId}/events`
 
 **Заголовки:**
 - `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
 **Параметры запроса:**
-- `limit` - количество сообщений (по умолчанию 50)
-- `skip` - смещение (по умолчанию 0)
-- `startDate` - начальная дата (ISO 8601)
-- `endDate` - конечная дата (ISO 8601)
+- `since` - временная метка в формате ISO 8601, с которой получать события
+- `limit` - максимальное количество событий (по умолчанию 20)
+- `types` - типы событий через запятую (например, `message_sent,message_received,message_status`)
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
-  "messages": [
+  "events": [
     {
-      "id": "message_id",
-      "instanceId": "instance_id",
-      "remoteJid": "79001234567@s.whatsapp.net",
-      "fromMe": true,
-      "messageType": "text",
-      "content": "Привет! Как дела?",
-      "messageId": "whatsapp_message_id",
-      "hasMedia": false,
-      "status": "sent",
-      "createdAt": "2023-01-01T12:00:00.000Z"
+      "type": "message_received",
+      "timestamp": "2023-01-01T12:05:00.000Z",
+      "data": {
+        "instanceId": "instance_id",
+        "messageId": "whatsapp_message_id",
+        "remoteJid": "79001234567@s.whatsapp.net",
+        "fromMe": false,
+        "body": "Привет! Как дела?",
+        "hasMedia": false,
+        "status": "received",
+        "metadata": {
+          "pushName": "Иван",
+          "timestamp": 1672531200
+        }
+      }
     }
   ],
-  "pagination": {
-    "total": 120,
-    "limit": 50,
-    "skip": 0,
-    "hasMore": true
-  }
+  "latestTimestamp": "2023-01-01T12:05:00.000Z",
+  "count": 1,
+  "hasMore": false
 }
 ```
 
 ## 📱 WhatsApp API
 
-### Получение Статуса Инстанса
+### Получение статуса инстанса
 
 **Endpoint:** `GET /api/whatsapp/{instanceId}/status`
 
 **Заголовки:**
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "ready": true,
@@ -387,23 +502,21 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 **Заголовки:**
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "qrCode": "1@HbT1Ye1Hhb9eB9KRWwRQbz4IP3wK8ocJ35zzr2z25PinMxWkgZ46Vp8l07Wz9Wl5HmdULhQMvn0g==,some-qr-string-data..."
 }
 ```
 
-**Важно:** QR-код возвращается в виде строки, которую нужно использовать для генерации QR-кода, а не в формате base64.
-
-### Отправка Текстового Сообщения
+### Отправка текстового сообщения
 
 **Endpoint:** `POST /api/whatsapp/{instanceId}/send`
 
 **Заголовки:**
 - `x-api-key: <api_key>`
 
-**Тело Запроса:**
+**Тело запроса:**
 ```json
 {
   "phone": "79001234567",
@@ -411,21 +524,21 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "id": "whatsapp_message_id"
 }
 ```
 
-### Отправка Медиа по URL
+### Отправка медиа по URL
 
 **Endpoint:** `POST /api/whatsapp/{instanceId}/send-media`
 
 **Заголовки:**
 - `x-api-key: <api_key>`
 
-**Тело Запроса:**
+**Тело запроса:**
 ```json
 {
   "phone": "79001234567",
@@ -435,14 +548,14 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "id": "whatsapp_message_id"
 }
 ```
 
-### Отправка Медиа из Файла
+### Отправка медиа из файла
 
 **Endpoint:** `POST /api/whatsapp/{instanceId}/send-file`
 
@@ -455,21 +568,37 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 - `caption` - описание файла (опционально)
 - `file` - файл для отправки
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "id": "whatsapp_message_id"
 }
 ```
 
-### Получение Контактов
+### Выход из WhatsApp
+
+**Endpoint:** `POST /api/whatsapp/{instanceId}/logout`
+
+**Заголовки:**
+- `x-api-key: <api_key>`
+
+**Успешный ответ:**
+```json
+{
+  "success": true
+}
+```
+
+## 👥 Контакты
+
+### Получение контактов из WhatsApp
 
 **Endpoint:** `GET /api/whatsapp/{instanceId}/contacts`
 
 **Заголовки:**
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "contacts": [
@@ -489,23 +618,186 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Выход из WhatsApp
+### Добавление контакта в WhatsApp
 
-**Endpoint:** `POST /api/whatsapp/{instanceId}/logout`
+**Endpoint:** `POST /api/whatsapp/{instanceId}/contacts/add`
 
 **Заголовки:**
+- `Authorization: Bearer <jwt_token>` или
 - `x-api-key: <api_key>`
 
-**Успешный Ответ:**
+**Тело запроса:**
 ```json
 {
-  "success": true
+  "phone": "79001234567",
+  "name": "Иван Иванов"
 }
 ```
 
-## 📊 Статистика
+**Успешный ответ:**
+```json
+{
+  "success": true,
+  "message": "Контакт успешно добавлен",
+  "contact": {
+    "id": "79001234567@s.whatsapp.net",
+    "number": "79001234567",
+    "name": "Иван Иванов"
+  }
+}
+```
 
-### Статистика Пользователя
+### Получение контактов из базы данных
+
+**Endpoint:** `GET /api/instances/{instanceId}/contacts/db` или `GET /api/whatsapp/{instanceId}/contacts/db`
+
+**Заголовки:**
+- `Authorization: Bearer <jwt_token>` или
+- `x-api-key: <api_key>`
+
+**Параметры запроса:**
+- `limit` - количество контактов (по умолчанию 100)
+- `skip` - смещение (по умолчанию 0)
+- `search` - строка поиска по имени или номеру
+- `onlyGroups` - фильтр только для групп (true/false)
+
+**Успешный ответ:**
+```json
+{
+  "contacts": [
+    {
+      "id": "contact_id",
+      "instanceId": "instance_id",
+      "name": "Иван Иванов",
+      "number": "79001234567",
+      "remoteJid": "79001234567@s.whatsapp.net",
+      "pushName": "Иван",
+      "isGroup": false,
+      "profilePicture": null,
+      "about": null,
+      "lastActivity": "2023-01-01T12:00:00.000Z",
+      "createdAt": "2023-01-01T10:00:00.000Z",
+      "updatedAt": "2023-01-01T12:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "total": 150,
+    "limit": 100,
+    "skip": 0,
+    "hasMore": true
+  }
+}
+```
+
+### Импорт контактов из WhatsApp в базу данных
+
+**Endpoint:** `POST /api/instances/{instanceId}/contacts/import` или `POST /api/whatsapp/{instanceId}/contacts/import`
+
+**Заголовки:**
+- `Authorization: Bearer <jwt_token>` или
+- `x-api-key: <api_key>`
+
+**Успешный ответ:**
+```json
+{
+  "success": true,
+  "message": "Successfully imported 25 contacts",
+  "importedCount": 25
+}
+```
+
+### Сохранение или обновление контакта в базе данных
+
+**Endpoint:** `POST /api/instances/{instanceId}/contacts/save` или `POST /api/whatsapp/{instanceId}/contacts/save`
+
+**Заголовки:**
+- `Authorization: Bearer <jwt_token>` или
+- `x-api-key: <api_key>`
+
+**Тело запроса:**
+```json
+{
+  "number": "79001234567",
+  "name": "Иван Иванов",
+  "pushName": "Иван",
+  "isGroup": false,
+  "profilePicture": "url-to-picture",
+  "about": "Статус пользователя"
+}
+```
+
+**Успешный ответ:**
+```json
+{
+  "id": "contact_id",
+  "instanceId": "instance_id",
+  "name": "Иван Иванов",
+  "number": "79001234567",
+  "remoteJid": "79001234567@s.whatsapp.net",
+  "pushName": "Иван",
+  "isGroup": false,
+  "profilePicture": "url-to-picture",
+  "about": "Статус пользователя",
+  "lastActivity": "2023-01-01T12:00:00.000Z",
+  "createdAt": "2023-01-01T10:00:00.000Z",
+  "updatedAt": "2023-01-01T12:00:00.000Z"
+}
+```
+
+## 💬 Чаты и сообщения
+
+### Получение истории сообщений чата
+
+**Endpoint:** `GET /api/instances/{instanceId}/chats/{chatId}/messages`
+
+**Заголовки:**
+- `Authorization: Bearer <jwt_token>` или
+- `x-api-key: <api_key>`
+
+**Параметры запроса:**
+- `limit` - количество сообщений (по умолчанию 50)
+- `skip` - смещение (по умолчанию 0)
+- `startDate` - начальная дата в формате ISO 8601
+- `endDate` - конечная дата в формате ISO 8601
+
+**Успешный ответ:**
+```json
+{
+  "messages": [
+    {
+      "id": "message_id",
+      "instanceId": "instance_id",
+      "remoteJid": "79001234567@s.whatsapp.net",
+      "fromMe": true,
+      "messageType": "text",
+      "content": "Привет! Как дела?",
+      "messageId": "whatsapp_message_id",
+      "hasMedia": false,
+      "mediaUrl": null,
+      "caption": null,
+      "mimeType": null,
+      "fileName": null,
+      "status": "sent",
+      "metadata": {
+        "timestamp": 1672531200
+      },
+      "createdAt": "2023-01-01T12:00:00.000Z",
+      "updatedAt": "2023-01-01T12:00:00.000Z",
+      "statusUpdatedAt": "2023-01-01T12:00:05.000Z"
+    }
+  ],
+  "pagination": {
+    "total": 120,
+    "limit": 50,
+    "skip": 0,
+    "hasMore": true
+  }
+}
+```
+
+## 📊 Статистика и мониторинг
+
+### Статистика пользователя
 
 **Endpoint:** `GET /api/stats/user`
 
@@ -516,7 +808,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 **Параметры запроса:**
 - `period` - период статистики (week, month, year, all, по умолчанию month)
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "total": {
@@ -545,7 +837,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Статистика Инстанса
+### Статистика инстанса
 
 **Endpoint:** `GET /api/stats/instances/{instanceId}`
 
@@ -556,7 +848,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 **Параметры запроса:**
 - `period` - период статистики (today, week, month, all, по умолчанию today)
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "usage": {
@@ -580,7 +872,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-### Системная Статистика
+### Системная статистика
 
 **Endpoint:** `GET /api/stats/system`
 
@@ -590,7 +882,7 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 
 **Важно:** Требуются права администратора
 
-**Успешный Ответ:**
+**Успешный ответ:**
 ```json
 {
   "instances": {
@@ -615,13 +907,9 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 
 ## 🌐 Webhooks
 
-Система поддерживает отправку webhook-уведомлений о различных событиях.
+Система поддерживает отправку webhook-уведомлений о различных событиях. Настройка webhooks производится при создании или обновлении инстанса.
 
-### Настройка Webhooks
-
-Настройки webhook производится при создании или обновлении инстанса.
-
-### Типы Событий
+### Типы событий
 
 1. **message_received** - Получено новое сообщение
 ```json
@@ -673,10 +961,10 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-4. **connection_opened** - Установлено соединение с WhatsApp
+4. **connected** - Установлено соединение с WhatsApp
 ```json
 {
-  "event": "connection_opened",
+  "event": "connected",
   "data": {
     "instanceId": "instance_id"
   },
@@ -684,10 +972,10 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
-5. **connection_closed** - Закрыто соединение с WhatsApp
+5. **disconnected** - Закрыто соединение с WhatsApp
 ```json
 {
-  "event": "connection_closed",
+  "event": "disconnected",
   "data": {
     "instanceId": "instance_id",
     "reason": "logout",
@@ -709,11 +997,108 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 }
 ```
 
+7. **limit_exceeded** - Превышены лимиты использования
+```json
+{
+  "event": "limit_exceeded",
+  "data": {
+    "instanceId": "instance_id",
+    "exceededLimits": ["maxMessagesSent", "maxApiCalls"],
+    "usage": {
+      "messagesSent": 1500,
+      "apiCalls": 5000
+    }
+  },
+  "timestamp": "2023-01-01T14:00:00.000Z"
+}
+```
+
+8. **webhook_updated** - Обновлены настройки webhook
+```json
+{
+  "event": "webhook_updated",
+  "data": {
+    "instanceId": "instance_id",
+    "timestamp": "2023-01-01T15:00:00.000Z"
+  },
+  "timestamp": "2023-01-01T15:00:00.000Z"
+}
+```
+
 ### Безопасность Webhook
 
 Для обеспечения безопасности webhook можно использовать секретный ключ. Если ключ указан, сервер будет добавлять заголовок `X-Webhook-Signature` к каждому запросу, который содержит HMAC SHA-256 подпись тела запроса, созданную с использованием секретного ключа.
 
-## 🚫 Коды Ошибок
+Пример проверки подписи на стороне получателя:
+
+```javascript
+const crypto = require('crypto');
+
+function verifyWebhookSignature(body, signature, secret) {
+  const computedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(typeof body === 'string' ? body : JSON.stringify(body))
+    .digest('hex');
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(computedSignature)
+  );
+}
+
+// Использование в Express
+app.post('/webhook', (req, res) => {
+  const signature = req.headers['x-webhook-signature'];
+  const secret = 'your-webhook-secret';
+  
+  if (!signature || !verifyWebhookSignature(req.body, signature, secret)) {
+    return res.status(401).send('Invalid signature');
+  }
+  
+  // Обработка webhook
+  // ...
+  
+  res.sendStatus(200);
+});
+```
+
+## 🔄 Управление базой данных
+
+API поддерживает работу с двумя типами баз данных: MongoDB и SQLite. Можно переключаться между ними даже во время работы.
+
+### Получение статуса базы данных
+
+**Endpoint:** `GET /api/db/status`
+
+**Ответ:**
+```json
+{
+  "provider": "sqlite",
+  "url": "file:./data/whatsapp-api.db"
+}
+```
+
+### Переключение провайдера базы данных
+
+**Endpoint:** `POST /api/db/switch`
+
+**Тело запроса:**
+```json
+{
+  "provider": "mongodb"
+}
+```
+
+**Успешный ответ:**
+```json
+{
+  "success": true,
+  "message": "Database provider switched to mongodb",
+  "provider": "mongodb"
+}
+```
+
+## 🚫 Коды ошибок
 
 | Код  | Описание                 | Возможные причины                                        |
 |------|--------------------------|----------------------------------------------------------|
@@ -723,116 +1108,456 @@ WhatsApp Multi-Instance API позволяет управлять несколь
 | 404  | Ресурс не найден         | Инстанс не существует, сообщение не найдено               |
 | 500  | Внутренняя ошибка сервера| Ошибка в работе сервера, проблемы с базой данных        |
 
-## 🔒 Безопасность
-
-### Рекомендации по безопасности
-
-1. **HTTPS**: Всегда используйте HTTPS для взаимодействия с API.
-2. **Защита API-ключа**: Храните API-ключ в безопасном месте, не включайте его в код клиентских приложений.
-3. **Регулярное обновление учетных данных**: Периодически меняйте пароль и API-ключ.
-4. **Ограничение доступа**: Настройте список разрешенных IP-адресов для доступа к API.
-5. **Мониторинг**: Следите за логами активности для выявления подозрительных действий.
-
-## 🚀 Примеры Использования
+## 🚀 Примеры использования
 
 ### Python
 
 ```python
 import requests
+import qrcode
+import time
+from io import BytesIO
+from PIL import Image
 
-# Создание инстанса
+# Конфигурация API
 api_key = "YOUR_API_KEY"
 base_url = "https://api.example.com/api"
 
-# Заголовки для авторизации
+# Заголовки для аутентификации
 headers = {
     "x-api-key": api_key,
     "Content-Type": "application/json"
 }
 
 # Создание нового инстанса
-instance_data = {
-    "name": "Основной WhatsApp",
-    "description": "Корпоративный аккаунт",
-    "webhookUrl": "https://your-webhook.com/whatsapp"
-}
+def create_instance(name, description, webhook_url=None):
+    instance_data = {
+        "name": name,
+        "description": description
+    }
+    
+    if webhook_url:
+        instance_data["webhookUrl"] = webhook_url
+        instance_data["webhookEnabled"] = True
+        instance_data["notifyReceived"] = True
+        instance_data["notifySent"] = True
+    
+    response = requests.post(
+        f"{base_url}/instances", 
+        headers=headers, 
+        json=instance_data
+    )
+    
+    if response.status_code == 201:
+        return response.json()
+    else:
+        raise Exception(f"Ошибка создания инстанса: {response.text}")
 
-response = requests.post(f"{base_url}/instances", 
-                        headers=headers, 
-                        json=instance_data)
-instance = response.json()
-instance_id = instance["id"]
+# Получение и отображение QR-кода
+def get_and_display_qr(instance_id):
+    print("Получение QR-кода...")
+    
+    max_attempts = 10
+    for attempt in range(max_attempts):
+        response = requests.get(
+            f"{base_url}/instances/{instance_id}/qr", 
+            headers=headers
+        )
+        
+        if response.status_code == 200 and "qrCode" in response.json():
+            qr_data = response.json()["qrCode"]
+            img = qrcode.make(qr_data)
+            img.show()
+            print("Отсканируйте QR-код в приложении WhatsApp")
+            return True
+        elif response.status_code == 202:
+            print("QR-код еще генерируется, ожидание...")
+            time.sleep(3)
+        else:
+            print(f"Попытка {attempt+1}/{max_attempts}: не удалось получить QR-код")
+            time.sleep(2)
+    
+    return False
 
 # Отправка сообщения
-message_data = {
-    "phone": "79001234567",
-    "message": "Привет! Это тестовое сообщение."
-}
+def send_message(instance_id, phone, message):
+    response = requests.post(
+        f"{base_url}/whatsapp/{instance_id}/send", 
+        headers=headers, 
+        json={"phone": phone, "message": message}
+    )
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Ошибка отправки сообщения: {response.text}")
 
-response = requests.post(f"{base_url}/whatsapp/{instance_id}/send", 
-                        headers=headers, 
-                        json=message_data)
-result = response.json()
-print(f"Сообщение отправлено, ID: {result['id']}")
+# Отправка изображения
+def send_image(instance_id, phone, image_url, caption=None):
+    data = {
+        "phone": phone,
+        "url": image_url
+    }
+    
+    if caption:
+        data["caption"] = caption
+    
+    response = requests.post(
+        f"{base_url}/whatsapp/{instance_id}/send-media", 
+        headers=headers, 
+        json=data
+    )
+    
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Ошибка отправки изображения: {response.text}")
+
+# Мониторинг входящих сообщений
+def monitor_messages(instance_id, callback, interval=5):
+    last_timestamp = None
+    
+    try:
+        while True:
+            params = {"limit": 10}
+            if last_timestamp:
+                params["since"] = last_timestamp
+            
+            response = requests.get(
+                f"{base_url}/instances/{instance_id}/events", 
+                headers=headers,
+                params=params
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                for event in data["events"]:
+                    if event["type"] == "message_received":
+                        callback(event["data"])
+                
+                if data["events"]:
+                    last_timestamp = data["latestTimestamp"]
+            
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        print("Мониторинг остановлен")
+
+# Пример использования
+if __name__ == "__main__":
+    # Создание нового инстанса
+    instance = create_instance(
+        "Тестовый инстанс", 
+        "Создан через Python SDK",
+        "https://webhook.example.com/whatsapp"
+    )
+    
+    instance_id = instance["id"]
+    print(f"Инстанс создан с ID: {instance_id}")
+    
+    # Получение и отображение QR-кода
+    if get_and_display_qr(instance_id):
+        print("Ожидание сканирования QR-кода...")
+        time.sleep(20)  # Даем время на сканирование
+        
+        # Отправка тестового сообщения
+        result = send_message(instance_id, "79001234567", "Тестовое сообщение из Python")
+        print(f"Сообщение отправлено, ID: {result['id']}")
+        
+        # Мониторинг входящих сообщений (закомментирован для примера)
+        # def message_handler(message):
+        #     print(f"Новое сообщение от {message['from']}: {message['body']}")
+        #
+        # monitor_messages(instance_id, message_handler)
 ```
 
 ### Node.js
 
 ```javascript
 const axios = require('axios');
+const qrcode = require('qrcode-terminal');
 
-// Настройка API
+// Конфигурация API
 const apiKey = 'YOUR_API_KEY';
 const baseUrl = 'https://api.example.com/api';
 
-// Заголовки для авторизации
+// Заголовки для аутентификации
 const headers = {
   'x-api-key': apiKey,
   'Content-Type': 'application/json'
 };
 
-// Отправка сообщения
-async function sendMessage(instanceId, phone, message) {
-  try {
-    const response = await axios.post(
-      `${baseUrl}/whatsapp/${instanceId}/send`,
-      { phone, message },
-      { headers }
-    );
-    
-    console.log(`Сообщение отправлено, ID: ${response.data.id}`);
-    return response.data;
-  } catch (error) {
-    console.error('Ошибка при отправке сообщения:', error.response?.data || error.message);
-    throw error;
+// Класс для работы с WhatsApp Multi-Instance API
+class WhatsAppAPI {
+  constructor(apiKey, baseUrl) {
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+    this.headers = {
+      'x-api-key': apiKey,
+      'Content-Type': 'application/json'
+    };
   }
-}
-
-// Получение QR-кода
-async function getQrCode(instanceId) {
-  try {
-    const response = await axios.get(
-      `${baseUrl}/whatsapp/${instanceId}/qr`,
-      { headers }
-    );
+  
+  // Создание нового инстанса
+  async createInstance(name, description, webhookUrl = null) {
+    try {
+      const instanceData = {
+        name,
+        description
+      };
+      
+      if (webhookUrl) {
+        instanceData.webhookUrl = webhookUrl;
+        instanceData.webhookEnabled = true;
+        instanceData.notifyReceived = true;
+        instanceData.notifySent = true;
+      }
+      
+      const response = await axios.post(
+        `${this.baseUrl}/instances`,
+        instanceData,
+        { headers: this.headers }
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка создания инстанса:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  // Получение и отображение QR-кода
+  async getAndDisplayQR(instanceId, maxAttempts = 10) {
+    console.log('Получение QR-кода...');
     
-    // QR-код возвращается как строка, которую нужно использовать для создания QR-кода
-    const qrCode = response.data.qrCode;
-    console.log('QR-код получен:', qrCode);
-    return qrCode;
-  } catch (error) {
-    console.error('Ошибка при получении QR-кода:', error.response?.data || error.message);
-    throw error;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await axios.get(
+          `${this.baseUrl}/instances/${instanceId}/qr`,
+          { headers: this.headers }
+        );
+        
+        if (response.data.qrCode) {
+          // Отображаем QR-код в консоли
+          qrcode.generate(response.data.qrCode);
+          console.log('Отсканируйте QR-код в приложении WhatsApp');
+          return true;
+        }
+      } catch (error) {
+        if (error.response?.status === 202) {
+          console.log('QR-код еще генерируется, ожидание...');
+        } else {
+          console.log(`Попытка ${attempt+1}/${maxAttempts}: не удалось получить QR-код`);
+        }
+      }
+      
+      // Ждем перед следующей попыткой
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    
+    return false;
+  }
+  
+  // Проверка статуса инстанса
+  async checkStatus(instanceId) {
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/whatsapp/${instanceId}/status`,
+        { headers: this.headers }
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка проверки статуса:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  // Отправка сообщения
+  async sendMessage(instanceId, phone, message) {
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/whatsapp/${instanceId}/send`,
+        { phone, message },
+        { headers: this.headers }
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка отправки сообщения:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  // Отправка изображения
+  async sendImage(instanceId, phone, imageUrl, caption = null) {
+    try {
+      const data = {
+        phone,
+        url: imageUrl
+      };
+      
+      if (caption) {
+        data.caption = caption;
+      }
+      
+      const response = await axios.post(
+        `${this.baseUrl}/whatsapp/${instanceId}/send-media`,
+        data,
+        { headers: this.headers }
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('Ошибка отправки изображения:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
+  // Получение контактов
+  async getContacts(instanceId) {
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/whatsapp/${instanceId}/contacts`,
+        { headers: this.headers }
+      );
+      
+      return response.data.contacts;
+    } catch (error) {
+      console.error('Ошибка получения контактов:', error.response?.data || error.message);
+      return [];
+    }
+  }
+  
+  // Мониторинг входящих сообщений
+  async monitorMessages(instanceId, callback, interval = 5000) {
+    let lastTimestamp = null;
+    
+    const checkMessages = async () => {
+      try {
+        const params = { limit: 10 };
+        if (lastTimestamp) {
+          params.since = lastTimestamp;
+        }
+        
+        const response = await axios.get(
+          `${this.baseUrl}/instances/${instanceId}/events`,
+          { 
+            headers: this.headers,
+            params
+          }
+        );
+        
+        const data = response.data;
+        
+        for (const event of data.events) {
+          if (event.type === 'message_received') {
+            callback(event.data);
+          }
+        }
+        
+        if (data.events.length > 0) {
+          lastTimestamp = data.latestTimestamp;
+        }
+      } catch (error) {
+        console.error('Ошибка мониторинга сообщений:', error.message);
+      }
+    };
+    
+    // Запускаем интервал проверки новых сообщений
+    const intervalId = setInterval(checkMessages, interval);
+    
+    // Возвращаем функцию для остановки мониторинга
+    return () => clearInterval(intervalId);
   }
 }
 
 // Пример использования
-(async () => {
-  const instanceId = 'YOUR_INSTANCE_ID';
-  await sendMessage(instanceId, '79001234567', 'Привет из Node.js!');
-})();
+async function main() {
+  const whatsapp = new WhatsAppAPI(apiKey, baseUrl);
+  
+  try {
+    // Создание нового инстанса
+    const instance = await whatsapp.createInstance(
+      'Тестовый инстанс',
+      'Создан через Node.js SDK',
+      'https://webhook.example.com/whatsapp'
+    );
+    
+    const instanceId = instance.id;
+    console.log(`Инстанс создан с ID: ${instanceId}`);
+    
+    // Получение и отображение QR-кода
+    if (await whatsapp.getAndDisplayQR(instanceId)) {
+      console.log('Ожидание сканирования QR-кода...');
+      
+      // Даем время на сканирование
+      await new Promise(resolve => setTimeout(resolve, 20000));
+      
+      // Проверка статуса
+      const status = await whatsapp.checkStatus(instanceId);
+      console.log('Статус инстанса:', status);
+      
+      if (status.ready) {
+        // Отправка тестового сообщения
+        const result = await whatsapp.sendMessage(
+          instanceId,
+          '79001234567',
+          'Тестовое сообщение из Node.js'
+        );
+        
+        console.log(`Сообщение отправлено, ID: ${result.id}`);
+        
+        // Запуск мониторинга сообщений
+        const stopMonitoring = await whatsapp.monitorMessages(
+          instanceId,
+          (message) => {
+            console.log(`Новое сообщение от ${message.from}: ${message.body}`);
+          }
+        );
+        
+        // Остановка мониторинга через 1 минуту
+        setTimeout(() => {
+          stopMonitoring();
+          console.log('Мониторинг остановлен');
+        }, 60000);
+      }
+    }
+  } catch (error) {
+    console.error('Произошла ошибка:', error.message);
+  }
+}
+
+main();
 ```
+
+## Дополнительная информация
+
+### Структура проекта
+
+```
+├── src/
+│   ├── controllers/       # Контроллеры API
+│   ├── middleware/        # Middleware для Express
+│   ├── models/            # Модели данных
+│   ├── routes/            # Определения маршрутов
+│   ├── services/          # Бизнес-логика
+│   ├── utils/             # Утилиты
+│   └── app.js             # Точка входа приложения
+├── prisma/
+│   ├── schema.prisma      # Схема базы данных для MongoDB
+│   └── schema.sqlite.prisma # Схема базы данных для SQLite
+├── public/                # Статические файлы и веб-интерфейс
+├── instances/             # Хранилище данных инстансов
+├── uploads/               # Загруженные файлы
+├── logs/                  # Лог-файлы
+└── docker-compose.yml     # Конфигурация для Docker Compose
+```
+
+### Лицензия
+
+Данное программное обеспечение распространяется под лицензией MIT.
 
 ---
 
-**⚠️ Внимание:** Документация может обновляться. Всегда проверяйте актуальную версию.
+**⚠️ Примечание:** Документация может обновляться по мере развития API. Проверяйте последнюю версию в репозитории проекта.
