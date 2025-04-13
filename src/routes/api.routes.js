@@ -80,6 +80,7 @@ router.get('/instances/:instanceId/qr', authMiddleware, instanceController.getIn
 // Получить контакты
 router.get('/instances/:instanceId/contacts', authMiddleware, whatsappController.getContacts);
 
+// Создание контакта
 router.post('/instances/:instanceId/contacts/add', authMiddleware, whatsappController.addContact);
 
 // Получить контакты из базы данных
@@ -90,6 +91,15 @@ router.post('/instances/:instanceId/contacts/import', authMiddleware, contactCon
 
 // Добавить или обновить контакт в базе данных
 router.post('/instances/:instanceId/contacts/save', authMiddleware, contactController.saveContact);
+
+// Удалить контакт из базы данных (для пользователя)
+router.post('/instances/:instanceId/contacts/delete', authMiddleware, contactController.deleteContact);
+
+// Альтернативный вариант с использованием DELETE метода
+router.delete('/instances/:instanceId/contacts/:remoteJid', authMiddleware, (req, res, next) => {
+  req.body.remoteJid = req.params.remoteJid;
+  contactController.deleteContact(req, res, next);
+});
 
 // Отправить сообщение
 router.post('/instances/:instanceId/send', authMiddleware, whatsappController.sendMessage);
@@ -121,13 +131,13 @@ router.post('/whatsapp/:instanceId/contacts/save', instanceAuthMiddleware, conta
 router.post('/whatsapp/:instanceId/send', instanceAuthMiddleware, whatsappController.sendMessage);
 
 // Отправить медиа по URL
-router.post('/whatsapp/:instanceId/send-media', instanceAuthMiddleware, whatsappController.sendMediaUrl);
+router.post('/whatsapp/:instanceId/send-media', authMiddleware, whatsappController.sendMediaUrl);
 
 // Отправить медиа из файла
-router.post('/whatsapp/:instanceId/send-file', instanceAuthMiddleware, upload.single('file'), whatsappController.sendMediaFile);
+router.post('/whatsapp/:instanceId/send-file', authMiddleware, upload.single('file'), whatsappController.sendMediaFile);
 
 // Получить контакты
-router.get('/whatsapp/:instanceId/contacts', instanceAuthMiddleware, whatsappController.getContacts);
+router.get('/whatsapp/:instanceId/contacts', authMiddleware, whatsappController.getContacts);
 
 // То же самое, но с API ключом
 router.get('/whatsapp/:instanceId/events', instanceAuthMiddleware, whatsappController.getLatestEvents);

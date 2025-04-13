@@ -13,7 +13,7 @@ class ContactController {
   async getContactsFromDB(req, res, next) {
     try {
       const instanceId = req.params.instanceId;
-      
+
       // Опции для фильтрации и пагинации
       const options = {
         limit: parseInt(req.query.limit) || 100,
@@ -21,16 +21,16 @@ class ContactController {
         searchTerm: req.query.search || '',
         onlyGroups: req.query.onlyGroups === 'true'
       };
-      
+
       // Получаем контакты из базы данных
       const result = await contactService.getContacts(instanceId, options);
-      
+
       res.json(result);
     } catch (error) {
       next(error);
     }
   }
-  
+
   /**
    * Импортировать контакты из WhatsApp в базу данных
    * @param {object} req - Запрос
@@ -40,13 +40,13 @@ class ContactController {
   async importContacts(req, res, next) {
     try {
       const instanceId = req.params.instanceId;
-      
+
       // Получаем контакты из WhatsApp через существующий механизм
       const { contacts } = await whatsappManager.getContacts(instanceId);
-      
+
       // Импортируем контакты в базу данных
       const importedCount = await contactService.importContacts(instanceId, contacts);
-      
+
       res.json({
         success: true,
         message: `Successfully imported ${importedCount} contacts`,
@@ -56,7 +56,31 @@ class ContactController {
       next(error);
     }
   }
-  
+
+  /**
+ * Удалить контакт из базы данных
+ * @param {object} req - Запрос
+ * @param {object} res - Ответ
+ * @param {function} next - Следующий middleware
+ */
+  async deleteContact(req, res, next) {
+    try {
+      const instanceId = req.params.instanceId;
+      const { remoteJid } = req.body;
+
+      if (!remoteJid) {
+        return res.status(400).json({ error: 'remoteJid is required' });
+      }
+
+      // Удаляем контакт
+      const result = await contactService.deleteContact(instanceId, remoteJid);
+
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Добавить или обновить контакт в базе данных
    * @param {object} req - Запрос
@@ -67,24 +91,24 @@ class ContactController {
     try {
       const instanceId = req.params.instanceId;
       const contactData = req.body;
-      
+
       if (!contactData.number && !contactData.remoteJid) {
         return res.status(400).json({ error: 'Either number or remoteJid is required' });
       }
-      
+
       // Сохраняем контакт в базе данных
       const contact = await contactService.saveContact(instanceId, contactData);
-      
+
       if (!contact) {
         return res.status(500).json({ error: 'Failed to save contact' });
       }
-      
+
       res.json(contact);
     } catch (error) {
       next(error);
     }
   }
-  
+
   /**
    * Расширяет существующий метод getContacts из whatsapp.controller.js
    * Добавляет сохранение контактов в базу данных
@@ -92,10 +116,10 @@ class ContactController {
   async extendedGetContacts(req, res, next) {
     try {
       const instanceId = req.params.instanceId;
-      
+
       // Используем существующий метод получения контактов из WhatsApp
       const { contacts } = await whatsappManager.getContacts(instanceId);
-      
+
       // Асинхронно сохраняем контакты в базу данных, не блокируя ответ
       if (contacts && contacts.length > 0) {
         // Запускаем сохранение, но не ждем его завершения
@@ -109,7 +133,7 @@ class ContactController {
             });
           });
       }
-      
+
       // Возвращаем оригинальные контакты из WhatsApp
       res.json({ contacts });
     } catch (error) {

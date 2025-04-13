@@ -12,10 +12,10 @@ class ContactService {
   async saveContact(instanceId, contactData) {
     try {
       const prisma = dbConnector.getClient();
-      
+
       // Получаем remoteJid (полный JID)
       const remoteJid = contactData.remoteJid || this.formatJid(contactData.number, contactData.isGroup);
-      
+
       // Ищем существующий контакт
       const existingContact = await prisma.contact.findUnique({
         where: {
@@ -25,7 +25,7 @@ class ContactService {
           }
         }
       });
-      
+
       if (existingContact) {
         // Обновляем существующий контакт
         return await prisma.contact.update({
@@ -43,7 +43,7 @@ class ContactService {
         // Создаем новый контакт
         // Получаем номер из remoteJid
         const number = contactData.number || this.extractNumberFromJid(remoteJid);
-        
+
         return await prisma.contact.create({
           data: {
             instanceId,
@@ -67,7 +67,7 @@ class ContactService {
       return null;
     }
   }
-  
+
   /**
    * Получение контакта по remoteJid
    * @param {string} instanceId - ID инстанса
@@ -77,7 +77,7 @@ class ContactService {
   async getContactByJid(instanceId, remoteJid) {
     try {
       const prisma = dbConnector.getClient();
-      
+
       return await prisma.contact.findUnique({
         where: {
           instanceId_remoteJid: {
@@ -95,7 +95,7 @@ class ContactService {
       return null; // Возвращаем null вместо выброса ошибки
     }
   }
-  
+
   /**
    * Получение или создание контакта
    * @param {string} instanceId - ID инстанса
@@ -106,7 +106,7 @@ class ContactService {
   async getOrCreateContact(instanceId, remoteJid, pushName = null) {
     try {
       const contact = await this.getContactByJid(instanceId, remoteJid);
-      
+
       if (contact) {
         // Если контакт существует и получили новое pushName, обновляем его
         if (pushName && contact.pushName !== pushName) {
@@ -117,11 +117,11 @@ class ContactService {
         }
         return contact;
       }
-      
+
       // Создаем новый контакт
       const number = this.extractNumberFromJid(remoteJid);
       const isGroup = remoteJid.includes('@g.us');
-      
+
       return await this.saveContact(instanceId, {
         remoteJid,
         number,
@@ -134,7 +134,7 @@ class ContactService {
         stack: error.stack,
         remoteJid
       });
-      
+
       // В случае ошибки возвращаем базовый объект контакта
       return {
         instanceId,
@@ -144,7 +144,7 @@ class ContactService {
       };
     }
   }
-  
+
   /**
    * Получение всех контактов инстанса
    * @param {string} instanceId - ID инстанса
@@ -155,16 +155,16 @@ class ContactService {
     try {
       const prisma = dbConnector.getClient();
       const { limit = 100, skip = 0, searchTerm = '', onlyGroups = false } = options;
-      
+
       // Формируем фильтры
       const whereClause = {
         instanceId
       };
-      
+
       if (onlyGroups) {
         whereClause.isGroup = true;
       }
-      
+
       if (searchTerm) {
         whereClause.OR = [
           { name: { contains: searchTerm, mode: 'insensitive' } },
@@ -172,7 +172,7 @@ class ContactService {
           { pushName: { contains: searchTerm, mode: 'insensitive' } }
         ];
       }
-      
+
       // Получаем контакты с пагинацией
       const contacts = await prisma.contact.findMany({
         where: whereClause,
@@ -183,12 +183,12 @@ class ContactService {
         take: limit,
         skip
       });
-      
+
       // Считаем общее количество
       const total = await prisma.contact.count({
         where: whereClause
       });
-      
+
       return {
         contacts,
         pagination: {
@@ -207,7 +207,7 @@ class ContactService {
       return { contacts: [], pagination: { total: 0, limit: options.limit || 100, skip: options.skip || 0, hasMore: false } };
     }
   }
-  
+
   /**
    * Импорт контактов из WhatsApp
    * @param {string} instanceId - ID инстанса
@@ -217,11 +217,11 @@ class ContactService {
   async importContacts(instanceId, whatsappContacts) {
     try {
       let importedCount = 0;
-      
+
       // Обрабатываем каждый контакт
       for (const contact of whatsappContacts) {
         if (!contact.id) continue;
-        
+
         try {
           await this.saveContact(instanceId, {
             remoteJid: contact.id,
@@ -230,7 +230,7 @@ class ContactService {
             pushName: contact.notify || contact.name || contact.verifiedName,
             isGroup: contact.id.includes('@g.us')
           });
-          
+
           importedCount++;
         } catch (contactError) {
           logger.warn(`Error importing contact ${contact.id} for instance ${instanceId}`, {
@@ -238,7 +238,7 @@ class ContactService {
           });
         }
       }
-      
+
       logger.info(`Imported ${importedCount} contacts for instance ${instanceId}`);
       return importedCount;
     } catch (error) {
@@ -249,7 +249,56 @@ class ContactService {
       return 0; // Возвращаем 0 вместо выброса ошибки
     }
   }
-  
+
+  /**
+ * Удалить контакт
+ * @param {string} instanceId - ID инстанса
+ * @param {string} remoteJid - JID контакта для удаления
+ * @returns {Promise<object>} - Результат операции
+ */
+  async deleteContact(instanceId, remoteJid) {
+    try {
+      const prisma = dbConnector.getClient();
+
+      // Проверяем существование контакта
+      const existingContact = await prisma.contact.findUnique({
+        where: {
+          instanceId_remoteJid: {
+            instanceId,
+            remoteJid
+          }
+        }
+      });
+
+      if (!existingContact) {
+        throw new Error(`Contact with remoteJid ${remoteJid} not found`);
+      }
+
+      // Удаляем контакт
+      await prisma.contact.delete({
+        where: {
+          instanceId_remoteJid: {
+            instanceId,
+            remoteJid
+          }
+        }
+      });
+
+      logger.info(`Contact deleted for instance ${instanceId}`, {
+        remoteJid
+      });
+
+      return { success: true, message: `Contact ${remoteJid} successfully deleted` };
+    } catch (error) {
+      logger.error(`Error deleting contact for instance ${instanceId}`, {
+        error: error.message,
+        stack: error.stack,
+        remoteJid
+      });
+      throw error;
+    }
+  }
+
   /**
    * Форматирование номера в формат JID
    * @param {string} number - Номер телефона
@@ -259,13 +308,13 @@ class ContactService {
   formatJid(number, isGroup = false) {
     // Очищаем номер от всех нецифровых символов
     const cleaned = number.toString().replace(/\D/g, '');
-    
+
     // Добавляем суффикс в зависимости от типа
     const suffix = isGroup ? '@g.us' : '@s.whatsapp.net';
-    
+
     return `${cleaned}${suffix}`;
   }
-  
+
   /**
    * Извлечение номера из JID
    * @param {string} jid - JID формат

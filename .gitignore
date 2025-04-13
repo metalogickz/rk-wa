@@ -1,4 +1,7 @@
 node_modules/
+instances/
+prisma/data/
+logs/
 .env
 .wwebjs_auth/
 logs/
