@@ -21,12 +21,15 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
       - PORT=3000
+      - NODE_ENV=production
       - DATABASE_PROVIDER=mongodb
       - DATABASE_URL=mongodb://mongodb:27017/whatsapp-api
-      - ADMIN_EMAIL=admin@example.com
-      - ADMIN_PASSWORD=admin123
+      - JWT_SECRET=342fc53aba22686c095ddebbbfddd04f
+      - JWT_EXPIRATION=24h
+      - CORS_ORIGIN=*
+      - ADMIN_EMAIL=support@metalogic.kz
+      - ADMIN_PASSWORD=rwEdArEXbaoazHap
       - ADMIN_FIRST_NAME=Admin
       - ADMIN_LAST_NAME=User
       - ENABLE_CRON_JOBS=true
@@ -41,7 +44,7 @@ services:
     networks:
       - whatsapp-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
