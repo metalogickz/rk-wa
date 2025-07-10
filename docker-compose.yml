@@ -39,8 +39,8 @@ services:
       - ./uploads:/usr/src/app/uploads
       - ./logs:/usr/src/app/logs
       - ./data:/usr/src/app/data
-    depends_on:
-      - mongodb
+    # depends_on:
+    #   - mongodb
     networks:
       - whatsapp-network
     healthcheck:
@@ -58,7 +58,6 @@ services:
           memory: 512M
           cpus: '0.25'
     restart: unless-stopped
-
   # Nginx reverse proxy (опционально)
   # nginx:
   #   image: nginx:alpine
