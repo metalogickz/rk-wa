@@ -54,16 +54,11 @@ class DBConnector {
    */
   async initializeMongoDB() {
     try {
-      // Выполнение миграции для MongoDB
-      execSync('npx prisma db push --schema=./prisma/schema.prisma', {
-        stdio: 'inherit'
-      });
-
-      // Генерация клиента Prisma
-      execSync('npx prisma generate', {
-        stdio: 'inherit'
-      });
-
+      // Для MongoDB не нужно выполнять миграции схемы
+      // Просто проверяем подключение
+      const client = this.getClient();
+      await client.$connect();
+      
       logger.info('MongoDB database initialized successfully');
     } catch (error) {
       logger.error('MongoDB initialization failed', {

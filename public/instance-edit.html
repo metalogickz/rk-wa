@@ -1,18 +1,20 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Редактирование инстанса - WhatsApp API</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
   <div class="navbar">
     <div class="nav-container">
       <div class="nav-title">WhatsApp API Manager</div>
       <ul class="nav-links">
-        <li><a href="/instances">Инстансы</a></li>
-        <li><a href="/stats">Статистика</a></li>
+        <li><a href="/ui/instances">Инстансы</a></li>
+        <li><a href="/ui/stats">Статистика</a></li>
         <li><span id="user-info"></span> <a href="#" id="logout-btn">(Выйти)</a></li>
       </ul>
     </div>
@@ -20,7 +22,7 @@
 
   <div class="container">
     <div class="mb-20">
-      <a href="/instances" class="btn btn-secondary">&larr; Назад к списку</a>
+      <a href="/ui/instances" class="btn btn-secondary">&larr; Назад к списку</a>
     </div>
 
     <div id="loading" class="text-center">
@@ -46,7 +48,8 @@
 
           <div class="form-group">
             <label for="webhookUrl">URL Webhook</label>
-            <input type="url" id="webhookUrl" name="webhookUrl" class="form-control" placeholder="https://example.com/webhook">
+            <input type="url" id="webhookUrl" name="webhookUrl" class="form-control"
+              placeholder="https://example.com/webhook">
             <small>URL для получения уведомлений о новых сообщениях и изменениях статуса.</small>
           </div>
 
@@ -93,12 +96,14 @@
 
             <div class="form-group">
               <label for="retryInterval">Интервал между повторными попытками (мс)</label>
-              <input type="number" id="retryInterval" name="retryInterval" class="form-control" value="60000" min="1000" step="1000">
+              <input type="number" id="retryInterval" name="retryInterval" class="form-control" value="60000" min="1000"
+                step="1000">
             </div>
 
             <div class="form-group">
               <label for="webhookSecret">Новый секретный ключ для подписи webhook (опционально)</label>
-              <input type="text" id="webhookSecret" name="webhookSecret" class="form-control" placeholder="Оставьте пустым, чтобы сохранить текущий">
+              <input type="text" id="webhookSecret" name="webhookSecret" class="form-control"
+                placeholder="Оставьте пустым, чтобы сохранить текущий">
               <small>Заполните поле только если хотите изменить текущий ключ.</small>
             </div>
           </div>
@@ -116,7 +121,7 @@
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const instanceId = getIdFromPath();
-      
+
       // Элементы страницы
       const loadingElement = document.getElementById('loading');
       const editContainer = document.getElementById('edit-container');
@@ -124,23 +129,23 @@
       const webhookEnabledCheckbox = document.getElementById('webhookEnabled');
       const webhookSettingsDiv = document.getElementById('webhook-settings');
       const cancelBtn = document.getElementById('cancel-btn');
-      
+
       // Устанавливаем URL для кнопки отмены
-      cancelBtn.href = `/instance/${instanceId}`;
-      
+      cancelBtn.href = `/ui/instance/${instanceId}`;
+
       try {
         // Загружаем данные инстанса
         const instanceData = await fetchAPI(`/instances/${instanceId}`);
-        
+
         // Заполняем форму данными
         document.getElementById('name').value = instanceData.name || '';
         document.getElementById('description').value = instanceData.description || '';
         document.getElementById('webhookUrl').value = instanceData.webhookUrl || '';
         document.getElementById('webhookEnabled').checked = instanceData.webhookEnabled || false;
-        
+
         // Показываем/скрываем настройки webhook
         webhookSettingsDiv.classList.toggle('hidden', !webhookEnabledCheckbox.checked);
-        
+
         // Если есть настройки webhook, заполняем их
         if (instanceData.webhookSettings) {
           document.getElementById('notifyReceived').checked = instanceData.webhookSettings.notifyReceived !== false;
@@ -151,7 +156,7 @@
           document.getElementById('retryInterval').value = instanceData.webhookSettings.retryInterval || 60000;
           // Не заполняем секретный ключ, так как он будет обновлен только при необходимости
         }
-        
+
         // Скрываем загрузку и показываем форму
         loadingElement.classList.add('hidden');
         editContainer.classList.remove('hidden');
@@ -159,16 +164,16 @@
         loadingElement.classList.add('hidden');
         showAlert(`Ошибка при загрузке данных инстанса: ${error.message}`, 'danger');
       }
-      
+
       // Показываем или скрываем настройки webhook в зависимости от состояния чекбокса
       webhookEnabledCheckbox.addEventListener('change', () => {
         webhookSettingsDiv.classList.toggle('hidden', !webhookEnabledCheckbox.checked);
       });
-      
+
       // Обработчик отправки формы
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         try {
           // Собираем данные формы
           const formData = {
@@ -177,7 +182,7 @@
             webhookUrl: document.getElementById('webhookUrl').value,
             webhookEnabled: document.getElementById('webhookEnabled').checked
           };
-          
+
           // Если webhook включен, добавляем настройки
           if (formData.webhookEnabled) {
             formData.webhookSettings = {
@@ -188,23 +193,23 @@
               maxRetries: parseInt(document.getElementById('maxRetries').value),
               retryInterval: parseInt(document.getElementById('retryInterval').value)
             };
-            
+
             // Добавляем секретный ключ только если он был указан
             const secret = document.getElementById('webhookSecret').value;
             if (secret) {
               formData.webhookSettings.secret = secret;
             }
           }
-          
+
           // Отправляем запрос на обновление инстанса
           const response = await fetchAPI(`/instances/${instanceId}`, {
             method: 'PUT',
             body: JSON.stringify(formData)
           });
-          
+
           // Показываем сообщение об успехе
           showAlert('Инстанс успешно обновлен!', 'success');
-          
+
           // Перенаправляем на страницу с деталями инстанса
           setTimeout(() => {
             window.location.href = `/ui/instance/${instanceId}`;
@@ -216,4 +221,5 @@
     });
   </script>
 </body>
+
 </html>

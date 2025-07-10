@@ -1,13 +1,76 @@
+# Зависимости
 node_modules
 npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+.pnpm-debug.log*
+
+# Логи
 logs
+*.log
+
+# Данные приложения (будут монтироваться как volumes)
 instances
 uploads
 data
+sessions
+*.db
+*.db-*
+
+# Конфигурация окружения
 .env
+.env.*
+!.env.example
+
+# Git и системы контроля версий
 .git
+.gitignore
 .github
+
+# IDE и редакторы
 .idea
 .vscode
+*.swp
+*.swo
+*~
+
+# Тестирование и покрытие кода
 coverage
 test
+*.test.js
+*.spec.js
+.nyc_output
+
+# Временные файлы
+.tmp
+.temp
+tmp
+temp
+
+# OS файлы
+.DS_Store
+Thumbs.db
+
+# Docker файлы
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Документация
+*.md
+!README.md
+docs
+
+# Резервные копии
+*.backup
+*.bak
+
+# Prisma
+prisma/migrations
+
+# SSL сертификаты
+ssl
+*.pem
+*.key
+*.crt

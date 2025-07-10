@@ -138,7 +138,7 @@
         instanceData = await fetchAPI(`/instances/${instanceId}`);
 
         // Устанавливаем URL для кнопки редактирования
-        editBtn.href = `/instance/edit/${instanceId}`;
+        editBtn.href = `/ui/instance/edit/${instanceId}`;
 
         // Заполняем данные
         nameElement.textContent = instanceData.name;

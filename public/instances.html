@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Инстансы WhatsApp - WhatsApp API</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
   <div class="navbar">
     <div class="nav-container">
@@ -28,7 +30,7 @@
       <div id="loading" class="text-center">
         <p>Загрузка инстансов...</p>
       </div>
-      
+
       <div id="instances-list" class="hidden">
         <table>
           <thead>
@@ -43,7 +45,7 @@
           <tbody id="instances-table-body"></tbody>
         </table>
       </div>
-      
+
       <div id="no-instances" class="text-center hidden">
         <p>У вас пока нет инстансов. Создайте новый инстанс, чтобы начать работу.</p>
         <div style="margin-top: 20px;">
@@ -61,31 +63,31 @@
       const instancesList = document.getElementById('instances-list');
       const noInstancesElement = document.getElementById('no-instances');
       const instancesTableBody = document.getElementById('instances-table-body');
-      
+
       try {
         // Загружаем список инстансов
         const data = await fetchAPI('/instances');
         const instances = data.instances || [];
-        
+
         // Скрываем загрузку
         loadingElement.classList.add('hidden');
-        
+
         if (instances.length === 0) {
           // Если инстансов нет
           noInstancesElement.classList.remove('hidden');
         } else {
           // Если есть инстансы, отображаем их
           instancesList.classList.remove('hidden');
-          
+
           // Заполняем таблицу
           instances.forEach(instance => {
             const tr = document.createElement('tr');
-            
+
             // Форматируем последнюю активность
-            const lastActivity = instance.lastActivity 
+            const lastActivity = instance.lastActivity
               ? formatDate(instance.lastActivity)
               : 'Нет данных';
-            
+
             // HTML для строки таблицы
             tr.innerHTML = `
               <td><a href="/ui/instance/${instance.id}">${instance.name}</a></td>
@@ -102,15 +104,15 @@
                 </div>
               </td>
             `;
-            
+
             instancesTableBody.appendChild(tr);
           });
-          
+
           // Добавляем обработчики для кнопок удаления
           document.querySelectorAll('.delete-btn').forEach(btn => {
             btn.addEventListener('click', async (e) => {
               const instanceId = e.target.getAttribute('data-id');
-              
+
               if (confirm('Вы уверены, что хотите удалить этот инстанс? Это действие невозможно отменить.')) {
                 try {
                   await fetchAPI(`/instances/${instanceId}`, { method: 'DELETE' });
@@ -131,4 +133,5 @@
     });
   </script>
 </body>
+
 </html>

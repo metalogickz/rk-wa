@@ -206,13 +206,18 @@ function showAlert(message, type = 'info') {
 // Функция для форматирования даты
 function formatDate(dateString) {
   const date = new Date(dateString);
-  return new Intl.DateTimeFormat('ru-RU', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date);
+  try {
+    return new Intl.DateTimeFormat('ru-RU', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  } catch (error) {
+    console.error('Error formatting date:', error);
+    return dateString;
+  }
 }
 
 // Выход из системы
@@ -262,12 +267,13 @@ function getUrlParam(param) {
 // Функция для получения ID из пути URL (для routes с :id)
 function getIdFromPath() {
   const pathParts = window.location.pathname.split('/');
-  const excludedPages = ['chat', 'contacts', 'edit', 'details'];
+  const excludedPages = ['chat', 'contacts', 'details', 'messages'];
 
-  // Ищем индекс страницы среди исключенных
+  // // Ищем индекс страницы среди исключенных
   const pageIndex = pathParts.findIndex(part => excludedPages.includes(part));
+  console.log("🚀 ~ getIdFromPath ~ pageIndex:", pageIndex)
 
-  // Если страница найдена, возвращаем предыдущий элемент
+  // // Если страница найдена, возвращаем предыдущий элемент
   if (pageIndex > -1) {
     return pathParts[pageIndex - 1];
   }

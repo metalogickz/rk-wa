@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# Установка необходимых зависимостей для baileys
+# Установка необходимых зависимостей для baileys и git
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -35,6 +35,9 @@ RUN apt-get update && apt-get install -y \
     libxtst6 \
     xdg-utils \
     curl \
+    git \
+    sqlite3 \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # Рабочая директория приложения
@@ -83,6 +86,7 @@ mkdir -p /usr/src/app/src/public/js\n\
 # Выводим информацию о переменных окружения\n\
 echo "Current environment variables:"\n\
 echo "DATABASE_PROVIDER: ${DATABASE_PROVIDER}"\n\
+echo "DATABASE_URL: ${DATABASE_URL}"\n\
 echo "SQLITE_DATABASE_URL: ${SQLITE_DATABASE_URL}"\n\
 echo "ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}"\n\
 \n\
@@ -114,6 +118,14 @@ if [ "$DATABASE_PROVIDER" = "sqlite" ]; then\n\
   fi\n\
 elif [ "$DATABASE_PROVIDER" = "mongodb" ]; then\n\
   echo "Using MongoDB database..."\n\
+  echo "Waiting for MongoDB to be ready..."\n\
+  # Ждем, пока MongoDB станет доступен\n\
+  until nc -z mongodb 27017; do\n\
+    echo "Waiting for MongoDB..."\n\
+    sleep 2\n\
+  done\n\
+  echo "MongoDB is ready!"\n\
+  \n\
   # Создаем администратора для MongoDB\n\
   echo "Creating default admin user for MongoDB..."\n\
   ADMIN_EMAIL=${ADMIN_EMAIL:-"admin@example.com"} \\\n\
