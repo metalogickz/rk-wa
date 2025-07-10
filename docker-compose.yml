@@ -77,8 +77,8 @@ services:
   #     - with-nginx
 
 volumes:
-  mongodb_data:
-    driver: local
+  # mongodb_data:
+  #   driver: local
   whatsapp_instances:
     driver: local
   whatsapp_uploads:
