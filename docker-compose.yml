@@ -19,12 +19,12 @@ services:
     build: .
     container_name: whatsapp-api
     ports:
-      - "3000:3000"
+      - "14860:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
       - DATABASE_PROVIDER=mongodb
-      - DATABASE_URL=mongodb://mongodb:27017/whatsapp-api
+      - DATABASE_URL=mongodb+srv://gosuvendor:1q83M8ZuSjskqmkc@cluster1.2juvo.mongodb.net/whatsapp-api?retryWrites=true&w=majority
       - JWT_SECRET=342fc53aba22686c095ddebbbfddd04f
       - JWT_EXPIRATION=24h
       - CORS_ORIGIN=*
