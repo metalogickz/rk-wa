@@ -145,4 +145,16 @@ router.get('/whatsapp/:instanceId/events', instanceAuthMiddleware, whatsappContr
 // Выйти из WhatsApp
 router.post('/whatsapp/:instanceId/logout', instanceAuthMiddleware, whatsappController.logout);
 
+// Маршрут для получения медиа из папки uploads
+router.get('/uploads/:filename', (req, res) => {
+  const filename = req.params.filename;
+  if (filename) {
+    const filePath = path.join(__dirname, '../../uploads', filename);
+    res.sendFile(filePath);
+  }
+  else {
+    res.status(404).send('File not found');
+  }
+});
+
 module.exports = router;

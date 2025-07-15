@@ -259,7 +259,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "C:\\Users\\artie\\Desktop\\rk-wa\\prisma\\generated\\sqlite-client",
+      "value": "C:\\Users\\artie\\Desktop\\metalogic-rk-wa\\prisma\\generated\\sqlite-client",
       "fromEnvVar": null
     },
     "config": {
@@ -273,7 +273,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "C:\\Users\\artie\\Desktop\\rk-wa\\prisma\\schema.sqlite.prisma",
+    "sourceFilePath": "C:\\Users\\artie\\Desktop\\metalogic-rk-wa\\prisma\\schema.sqlite.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

@@ -1,3 +1,5 @@
+const { createWriteStream } = require('fs');
+const { downloadMediaMessage, getContentType } = require('@whiskeysockets/baileys');
 const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
 const dbConnector = require('../utils/db-connector');
 const path = require('path');
@@ -541,6 +543,28 @@ class WhatsAppManager {
           }
         }
 
+        let mediaUrl = null;
+        if (!!media) {
+          // 1. Декодируем Base64 в бинарный буфер
+          const imageBuffer = Buffer.from(media.data, 'base64');
+          // 2. Сохраняем файл на сервере
+          // Убедитесь, что папка './uploads' существует
+          const uploadsDir = path.join(__dirname, '../../uploads');
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+
+          const filePath = path.join(uploadsDir, media.filename);
+          fs.writeFileSync(filePath, imageBuffer);
+
+          // 3. Формируем URL
+          // (предполагая, что ваш сервер настроен раздавать статику из папки 'public')
+          mediaUrl = `/api/uploads/${media.filename}`;
+
+          console.debug('Файл сохранен по пути:', filePath);
+          console.debug('Доступен по URL:', mediaUrl);
+        }
+
         // Сохраняем сообщение в базе данных
         try {
           // Импортируем сервис инстансов
@@ -554,7 +578,7 @@ class WhatsAppManager {
             content: messageContent,
             messageId: message.key.id,
             hasMedia: !!media,
-            mediaUrl: null, // В будущем можно реализовать хранение медиафайлов
+            mediaUrl: mediaUrl,
             caption: message.message?.imageMessage?.caption || message.message?.videoMessage?.caption,
             mimeType: message.message?.imageMessage?.mimetype ||
               message.message?.documentMessage?.mimetype ||
@@ -679,20 +703,30 @@ class WhatsAppManager {
 
       if (!messageType) return null;
 
-      const stream = await sock.downloadContentFromMessage(
-        message.message[`${messageType}Message`],
-        messageType
-      );
+      // download the message
+      const stream = await downloadMediaMessage(
+        message,
+        'stream', // can be 'buffer' too
+        {},
+        {
+          logger,
+          // pass this so that baileys can request a reupload of media
+          // that has been deleted
+          reuploadRequest: sock.updateMediaMessage
+        }
+      )
 
       let buffer = Buffer.from([]);
       for await (const chunk of stream) {
         buffer = Buffer.concat([buffer, chunk]);
       }
 
+      const filename = message.message[`${messageType}Message`].fileName || `${message.key.id}-${messageType}.${message.message[`${messageType}Message`].mimetype.split(';')[0].split('/')[1]}`
+
       return {
         data: buffer.toString('base64'),
         mimetype: message.message[`${messageType}Message`].mimetype,
-        filename: message.message[`${messageType}Message`].fileName || `${messageType}.${message.message[`${messageType}Message`].mimetype.split('/')[1]}`
+        filename: `${message.key.id}-${filename}`
       };
     } catch (error) {
       logger.error('Error downloading media', {
