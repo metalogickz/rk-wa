@@ -116,23 +116,7 @@ if [ "$DATABASE_PROVIDER" = "sqlite" ]; then\n\
   else\n\
     echo "SQLite database file not found at $SQLITE_DATABASE_URL"\n\
   fi\n\
-elif [ "$DATABASE_PROVIDER" = "mongodb" ]; then\n\
-  echo "Using MongoDB database..."\n\
-  echo "Waiting for MongoDB to be ready..."\n\
-  # Ждем, пока MongoDB станет доступен\n\
-  until nc -z mongodb 27017; do\n\
-    echo "Waiting for MongoDB..."\n\
-    sleep 2\n\
-  done\n\
-  echo "MongoDB is ready!"\n\
-  \n\
-  # Создаем администратора для MongoDB\n\
-  echo "Creating default admin user for MongoDB..."\n\
-  ADMIN_EMAIL=${ADMIN_EMAIL:-"admin@example.com"} \\\n\
-  ADMIN_PASSWORD=${ADMIN_PASSWORD:-"admin123"} \\\n\
-  ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-"Admin"} \\\n\
-  ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-"User"} \\\n\
-  node scripts/init-admin.js\n\
+
 else\n\
   echo "Using default database provider..."\n\
   # Создаем администратора по умолчанию\n\

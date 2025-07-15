@@ -1,19 +1,4 @@
-version: '3.8'
-
 services:
-  # MongoDB сервис (опционально, если нужна MongoDB)
-  mongodb:
-    image: mongo:7.0
-    container_name: whatsapp-mongodb
-    ports:
-      - "27017:27017"
-    command: mongod --replSet rs0
-    volumes:
-      - mongodb_data:/data/db
-    restart: unless-stopped
-    networks:
-      - whatsapp-network
-
   # Основной WhatsApp API сервис
   whatsapp-api:
     build: .
@@ -39,8 +24,7 @@ services:
       - ./uploads:/usr/src/app/uploads
       - ./logs:/usr/src/app/logs
       - ./data:/usr/src/app/data
-    depends_on:
-      - mongodb
+
     networks:
       - whatsapp-network
     healthcheck:
@@ -78,8 +62,6 @@ services:
       - with-nginx
 
 volumes:
-  mongodb_data:
-    driver: local
   whatsapp_instances:
     driver: local
   whatsapp_uploads:
