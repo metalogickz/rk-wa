@@ -513,6 +513,21 @@ class WhatsAppManager {
         // Пропускаем сообщения, отправленные нами
         if (message.key.fromMe) continue;
 
+        // Получаем тип сообщения
+        const messageType = Object.keys(message?.message || {})?.[0] || 'protocolMessage';
+
+        // Логируем получение сообщения
+        logger.info(`Message received in instance ${instanceId}`, {
+          from: message.key.remoteJid,
+          type: messageType,
+          message: JSON.stringify(message)
+        });
+
+        // Пропускаем сообщения, которые не содержат текстовое содержимое
+        if (['messageContextInfo', 'protocolMessage'].includes(messageType)) {
+          continue;
+        }
+
         // Получаем текст сообщения
         const messageContent = message.message?.conversation ||
           message.message?.extendedTextMessage?.text ||
@@ -525,9 +540,6 @@ class WhatsAppManager {
           from,
           body: messageContent
         });
-
-        // Получаем тип сообщения
-        const messageType = Object.keys(message.message || {})[0];
 
         // Обрабатываем медиа, если есть
         let media = null;
