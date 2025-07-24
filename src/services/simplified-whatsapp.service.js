@@ -275,6 +275,21 @@ class SimplifiedWhatsAppService {
         // Пропускаем сообщения, отправленные нами
         if (message.key.fromMe) continue;
 
+        // Получаем тип сообщения
+        const messageType = Object.keys(message?.message || {})?.[0] || 'protocolMessage';
+
+        // Логируем получение сообщения
+        logger.info(`Message received in instance ${instanceId}`, {
+          from: message.key.remoteJid,
+          type: messageType,
+          message: JSON.stringify(message)
+        });
+
+        // Пропускаем сообщения, которые не содержат текстовое содержимое
+        if (['messageContextInfo', 'protocolMessage'].includes(messageType)) {
+          continue;
+        }
+
         // Получаем текст сообщения
         const messageContent = message.message?.conversation ||
           message.message?.extendedTextMessage?.text ||
@@ -292,9 +307,6 @@ class SimplifiedWhatsAppService {
         try {
           const prisma = dbConnector.getClient();
 
-          // Получаем тип сообщения
-          const messageType = Object.keys(message.message || {})[0];
-
           // Подготавливаем метаданные в зависимости от типа базы данных
           const metadata = {
             pushName: message.pushName,
@@ -304,11 +316,6 @@ class SimplifiedWhatsAppService {
           const preparedMetadata = dbConnector.activeProvider === 'sqlite'
             ? JSON.stringify(metadata)
             : metadata;
-
-          // Пропускаем сообщения, которые не содержат текстовое содержимое
-          if (['messageContextInfo', 'protocolMessage'].includes(messageType)) {
-            continue;
-          }
 
           // Создаем запись сообщения
           await prisma.message.create({
