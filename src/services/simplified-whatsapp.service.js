@@ -13,13 +13,13 @@ class SimplifiedWhatsAppService {
   constructor() {
     this.instances = new Map(); // instanceId -> {socket, state}
     this.instancesBasePath = path.join(__dirname, '../../instances');
-    
+
     // Создание базовой директории, если её нет
     if (!fs.existsSync(this.instancesBasePath)) {
       fs.mkdirSync(this.instancesBasePath, { recursive: true });
     }
   }
-  
+
   /**
    * Инициализировать экземпляр WhatsApp по запросу
    * @param {string} instanceId - ID экземпляра
@@ -27,40 +27,40 @@ class SimplifiedWhatsAppService {
    */
   async initInstance(instanceId) {
     logger.info(`Initializing WhatsApp instance ${instanceId}`);
-    
+
     // Проверяем, существует ли уже экземпляр
     if (this.instances.has(instanceId)) {
       logger.info(`Instance ${instanceId} already exists, returning existing instance`);
       return this.instances.get(instanceId);
     }
-    
+
     try {
       const prisma = dbConnector.getClient();
-      
+
       // Проверяем, существует ли экземпляр в базе данных
       const instance = await prisma.instance.findUnique({
         where: { id: instanceId }
       });
-      
+
       if (!instance) {
         throw new Error(`Instance ${instanceId} not found in database`);
       }
-      
+
       // Создаем директорию для данных экземпляра
       const instancePath = this.getInstancePath(instanceId);
       const authPath = path.join(instancePath, 'auth');
-      
+
       fs.mkdirSync(authPath, { recursive: true });
-      
+
       // Инициализация состояния аутентификации
       const { state, saveCreds } = await useMultiFileAuthState(authPath);
-      
+
       // Получаем последнюю версию Baileys
       const { version } = await fetchLatestBaileysVersion();
-      
+
       // Создаем логгер для Baileys (тихий режим)
       const baileysLogger = pino({ level: 'silent' });
-      
+
       // Создаем сокет WhatsApp
       const sock = makeWASocket({
         version,
@@ -74,7 +74,7 @@ class SimplifiedWhatsAppService {
         syncFullHistory: false,
         markOnlineOnConnect: false
       });
-      
+
       // Создаем объект экземпляра
       const instanceObj = {
         id: instanceId,
@@ -82,13 +82,13 @@ class SimplifiedWhatsAppService {
         status: 'connecting',
         qrCode: null
       };
-      
+
       // Добавляем экземпляр в карту
       this.instances.set(instanceId, instanceObj);
-      
+
       // Настраиваем обработчики событий
       this.setupEventHandlers(instanceId, sock, saveCreds);
-      
+
       // Обновляем статус в базе данных
       await prisma.instance.update({
         where: { id: instanceId },
@@ -97,18 +97,18 @@ class SimplifiedWhatsAppService {
           qrCode: null
         }
       });
-      
+
       return instanceObj;
     } catch (error) {
       logger.error(`Error initializing WhatsApp instance ${instanceId}`, {
         error: error.message,
         stack: error.stack
       });
-      
+
       throw error;
     }
   }
-  
+
   /**
    * Получить путь к директории экземпляра
    * @param {string} instanceId - ID экземпляра
@@ -117,7 +117,7 @@ class SimplifiedWhatsAppService {
   getInstancePath(instanceId) {
     return path.join(this.instancesBasePath, instanceId);
   }
-  
+
   /**
    * Настроить обработчики событий для экземпляра
    * @param {string} instanceId - ID экземпляра
@@ -126,21 +126,21 @@ class SimplifiedWhatsAppService {
    */
   setupEventHandlers(instanceId, sock, saveCreds) {
     const instanceObj = this.instances.get(instanceId);
-    
+
     // Обработка обновлений соединения
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
-      
+
       // Обработка QR-кода
       if (qr) {
         logger.info(`QR Code received for instance ${instanceId}`);
-        
+
         instanceObj.qrCode = qr;
         instanceObj.status = 'qr_received';
-        
+
         // Выводим QR в консоль
         qrcode.generate(qr, { small: true });
-        
+
         try {
           const prisma = dbConnector.getClient();
           await prisma.instance.update({
@@ -150,14 +150,14 @@ class SimplifiedWhatsAppService {
               qrCode: qr
             }
           });
-          
+
           // Логируем получение QR
           await prisma.activityLog.create({
             data: {
               instanceId,
               action: 'qr_received',
-              details: dbConnector.activeProvider === 'sqlite' 
-                ? JSON.stringify({}) 
+              details: dbConnector.activeProvider === 'sqlite'
+                ? JSON.stringify({})
                 : {}
             }
           });
@@ -167,22 +167,22 @@ class SimplifiedWhatsAppService {
           });
         }
       }
-      
+
       // Обработка изменений соединения
       if (connection) {
         if (connection === 'close') {
           const shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
             lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
-          
+
           instanceObj.status = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut
             ? 'logged_out'
             : 'disconnected';
-          
+
           logger.info(`WhatsApp connection closed for instance ${instanceId}`, {
             reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown',
             willReconnect: shouldReconnect
           });
-          
+
           // Обновляем статус в базе данных
           try {
             const prisma = dbConnector.getClient();
@@ -193,14 +193,14 @@ class SimplifiedWhatsAppService {
                 qrCode: null
               }
             });
-            
+
             // Логируем отключение
             await prisma.activityLog.create({
               data: {
                 instanceId,
                 action: 'disconnected',
-                details: dbConnector.activeProvider === 'sqlite' 
-                  ? JSON.stringify({ reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown' }) 
+                details: dbConnector.activeProvider === 'sqlite'
+                  ? JSON.stringify({ reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown' })
                   : { reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown' }
               }
             });
@@ -209,7 +209,7 @@ class SimplifiedWhatsAppService {
               error: error.message
             });
           }
-          
+
           // Если не нужно переподключаться, удаляем экземпляр из карты
           if (!shouldReconnect) {
             this.instances.delete(instanceId);
@@ -217,13 +217,13 @@ class SimplifiedWhatsAppService {
         }
         else if (connection === 'open') {
           logger.info(`WhatsApp client connected for instance ${instanceId}`);
-          
+
           instanceObj.status = 'connected';
           instanceObj.qrCode = null;
-          
+
           try {
             const prisma = dbConnector.getClient();
-            
+
             // Обновляем статус в базе данных
             await prisma.instance.update({
               where: { id: instanceId },
@@ -233,14 +233,14 @@ class SimplifiedWhatsAppService {
                 lastActivity: new Date()
               }
             });
-            
+
             // Логируем подключение
             await prisma.activityLog.create({
               data: {
                 instanceId,
                 action: 'connected',
-                details: dbConnector.activeProvider === 'sqlite' 
-                  ? JSON.stringify({}) 
+                details: dbConnector.activeProvider === 'sqlite'
+                  ? JSON.stringify({})
                   : {}
               }
             });
@@ -252,7 +252,7 @@ class SimplifiedWhatsAppService {
         }
       }
     });
-    
+
     // Обработка обновлений учетных данных
     sock.ev.on('creds.update', async () => {
       try {
@@ -265,46 +265,51 @@ class SimplifiedWhatsAppService {
         });
       }
     });
-    
+
     // Обработка входящих сообщений
     sock.ev.on('messages.upsert', async (msg) => {
       // Обрабатываем только новые сообщения
       if (msg.type !== 'notify') return;
-      
+
       for (const message of msg.messages) {
         // Пропускаем сообщения, отправленные нами
         if (message.key.fromMe) continue;
-        
+
         // Получаем текст сообщения
         const messageContent = message.message?.conversation ||
           message.message?.extendedTextMessage?.text ||
           message.message?.imageMessage?.caption ||
           '';
-        
+
         const from = message.key.remoteJid;
-        
+
         logger.info(`Message received in instance ${instanceId}`, {
           from,
           body: messageContent
         });
-        
+
         // Сохраняем сообщение в базе данных
         try {
           const prisma = dbConnector.getClient();
-          
+
           // Получаем тип сообщения
           const messageType = Object.keys(message.message || {})[0];
-          
+
           // Подготавливаем метаданные в зависимости от типа базы данных
           const metadata = {
             pushName: message.pushName,
             timestamp: message.messageTimestamp
           };
-          
-          const preparedMetadata = dbConnector.activeProvider === 'sqlite' 
-            ? JSON.stringify(metadata) 
+
+          const preparedMetadata = dbConnector.activeProvider === 'sqlite'
+            ? JSON.stringify(metadata)
             : metadata;
-          
+
+          // Пропускаем сообщения, которые не содержат текстовое содержимое
+          if (['messageContextInfo', 'protocolMessage'].includes(messageType)) {
+            continue;
+          }
+
           // Создаем запись сообщения
           await prisma.message.create({
             data: {
@@ -319,7 +324,7 @@ class SimplifiedWhatsAppService {
               metadata: preparedMetadata
             }
           });
-          
+
           // Обновляем счетчик сообщений
           await prisma.instance.update({
             where: { id: instanceId },
@@ -337,7 +342,7 @@ class SimplifiedWhatsAppService {
       }
     });
   }
-  
+
   /**
    * Получить QR-код экземпляра
    * @param {string} instanceId - ID экземпляра
@@ -347,7 +352,7 @@ class SimplifiedWhatsAppService {
     const instanceObj = this.instances.get(instanceId);
     return instanceObj ? instanceObj.qrCode : null;
   }
-  
+
   /**
    * Получить статус экземпляра
    * @param {string} instanceId - ID экземпляра
@@ -362,14 +367,14 @@ class SimplifiedWhatsAppService {
         hasQr: false
       };
     }
-    
+
     return {
       ready: instanceObj.status === 'connected',
       status: instanceObj.status,
       hasQr: !!instanceObj.qrCode
     };
   }
-  
+
   /**
    * Отправить сообщение
    * @param {string} instanceId - ID экземпляра
@@ -382,32 +387,32 @@ class SimplifiedWhatsAppService {
     if (!instanceObj || instanceObj.status !== 'connected') {
       throw new Error(`Instance ${instanceId} not ready`);
     }
-    
+
     try {
       // Форматируем номер получателя
       const chatId = this.formatNumber(to);
-      
+
       // Отправляем сообщение
       const result = await instanceObj.socket.sendMessage(chatId, { text: message });
-      
+
       logger.info(`Message sent for instance ${instanceId}`, {
         to: chatId,
         messageId: result.key.id
       });
-      
+
       // Сохраняем сообщение в базе данных
       try {
         const prisma = dbConnector.getClient();
-        
+
         // Подготавливаем метаданные
         const metadata = {
           timestamp: Date.now() / 1000
         };
-        
-        const preparedMetadata = dbConnector.activeProvider === 'sqlite' 
-          ? JSON.stringify(metadata) 
+
+        const preparedMetadata = dbConnector.activeProvider === 'sqlite'
+          ? JSON.stringify(metadata)
           : metadata;
-        
+
         // Создаем запись сообщения
         await prisma.message.create({
           data: {
@@ -422,7 +427,7 @@ class SimplifiedWhatsAppService {
             metadata: preparedMetadata
           }
         });
-        
+
         // Обновляем счетчик сообщений
         await prisma.instance.update({
           where: { id: instanceId },
@@ -437,7 +442,7 @@ class SimplifiedWhatsAppService {
           messageId: result.key.id
         });
       }
-      
+
       return { id: result.key.id };
     } catch (error) {
       logger.error(`Error sending message for instance ${instanceId}`, {
@@ -445,11 +450,11 @@ class SimplifiedWhatsAppService {
         error: error.message,
         stack: error.stack
       });
-      
+
       throw error;
     }
   }
-  
+
   /**
    * Выйти из WhatsApp
    * @param {string} instanceId - ID экземпляра
@@ -460,20 +465,20 @@ class SimplifiedWhatsAppService {
     if (!instanceObj) {
       throw new Error(`Instance ${instanceId} not found`);
     }
-    
+
     try {
       // Выполняем выход
       await instanceObj.socket.logout();
-      
+
       // Удаляем экземпляр из карты
       this.instances.delete(instanceId);
-      
+
       // Удаляем файлы аутентификации
       const authPath = path.join(this.getInstancePath(instanceId), 'auth');
       if (fs.existsSync(authPath)) {
         fs.rmSync(authPath, { recursive: true, force: true });
       }
-      
+
       // Обновляем статус в базе данных
       const prisma = dbConnector.getClient();
       await prisma.instance.update({
@@ -483,29 +488,29 @@ class SimplifiedWhatsAppService {
           qrCode: null
         }
       });
-      
+
       // Логируем выход
       await prisma.activityLog.create({
         data: {
           instanceId,
           action: 'logout',
-          details: dbConnector.activeProvider === 'sqlite' 
-            ? JSON.stringify({}) 
+          details: dbConnector.activeProvider === 'sqlite'
+            ? JSON.stringify({})
             : {}
         }
       });
-      
+
       return { success: true };
     } catch (error) {
       logger.error(`Error logging out instance ${instanceId}`, {
         error: error.message,
         stack: error.stack
       });
-      
+
       throw error;
     }
   }
-  
+
   /**
    * Форматировать номер телефона
    * @param {string} number - Номер телефона
@@ -514,17 +519,17 @@ class SimplifiedWhatsAppService {
   formatNumber(number) {
     // Удаляем все нецифровые символы
     let cleaned = number.toString().replace(/\D/g, '');
-    
+
     // Убеждаемся, что номер не начинается с '+'
     if (cleaned.startsWith('+')) {
       cleaned = cleaned.substring(1);
     }
-    
+
     // Добавляем суффикс '@s.whatsapp.net', если его нет
     if (!cleaned.includes('@')) {
       cleaned = `${cleaned}@s.whatsapp.net`;
     }
-    
+
     return cleaned;
   }
 }
