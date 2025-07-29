@@ -1,0 +1,6 @@
+npm run setup:sqlite
+npx prisma migrate reset --schema=./prisma/schema.sqlite.prisma --force 
+node scripts/init-local-sqlite.js 
+npm run dev 
+npm run prisma:generate 
+npm run dev 
