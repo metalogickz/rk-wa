@@ -176,6 +176,18 @@ class WhatsAppManager {
       const instancePath = this.getInstancePath(instanceId);
       const authPath = path.join(instancePath, 'auth');
 
+      // Если статус в БД "logged_out" — очищаем старые креды, чтобы форсировать генерацию свежего QR
+      if (instance.status === 'logged_out') {
+        try {
+          if (fs.existsSync(authPath)) {
+            logger.info(`Clearing auth state for ${instanceId} due to logged_out status`);
+            fs.rmSync(authPath, { recursive: true, force: true });
+          }
+        } catch (e) {
+          logger.warn(`Failed to clear auth state for ${instanceId}`, { error: e.message });
+        }
+      }
+
       fs.mkdirSync(authPath, { recursive: true });
 
       // Инициализация состояния аутентификации
@@ -224,16 +236,25 @@ class WhatsAppManager {
       // Устанавливаем таймер для проверки, был ли сгенерирован QR-код
       setTimeout(async () => {
         const currentInstance = this.instances.get(instanceId);
+        // Проверяем, что инстанс все еще существует и в состоянии connecting
         if (currentInstance && !currentInstance.qrCode && currentInstance.status === 'connecting') {
           logger.warn(`QR code not generated for instance ${instanceId} after timeout, retrying`);
 
-          // Пробуем переинициализировать
+          // Пробуем переинициализировать только если текущий статус все еще connecting
           try {
-            await this.reconnectInstance(instanceId);
+            // Устанавливаем флаг reconnecting, чтобы избежать множественных попыток
+            if (!currentInstance.isReconnecting) {
+              currentInstance.isReconnecting = true;
+              await this.reconnectInstance(instanceId);
+            }
           } catch (error) {
             logger.error(`Error reconnecting instance ${instanceId}`, {
               error: error.message
             });
+            // Сбрасываем флаг переподключения в случае ошибки
+            if (currentInstance) {
+              currentInstance.isReconnecting = false;
+            }
           }
         }
       }, 10000);  // 10 секунд - таймаут для генерации QR-кода
@@ -1681,7 +1702,7 @@ class WhatsAppManager {
       for (const instance of expiredInstances) {
         logger.warn(`Instance ${instance.id} has expired authorization, disconnecting`);
 
-        // Отключаем инстанс с истекшей авторизацией
+        // Отключаем инстанс с истекшей авторизации
         await this.stopInstance(instance.id);
 
         // Обновляем статус в базе данных
