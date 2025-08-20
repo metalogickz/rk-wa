@@ -131,8 +131,88 @@ class SimplifiedWhatsAppService {
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      // Обработка QR-кода
-      if (qr) {
+      // Обработка изменений соединения
+      if (connection === 'close' && lastDisconnect) {
+        const shouldReconnect = (lastDisconnect?.error instanceof Boom) && lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+
+        instanceObj.status = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut
+          ? 'logged_out'
+          : 'disconnected';
+
+        logger.info(`WhatsApp connection closed for instance ${instanceId}`, {
+          reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown',
+          willReconnect: shouldReconnect
+        });
+
+        // Обновляем статус в базе данных
+        try {
+          const prisma = dbConnector.getClient();
+          await prisma.instance.update({
+            where: { id: instanceId },
+            data: {
+              status: instanceObj.status,
+              qrCode: null
+            }
+          });
+
+          // Логируем отключение
+          await prisma.activityLog.create({
+            data: {
+              instanceId,
+              action: 'disconnected',
+              details: dbConnector.activeProvider === 'sqlite'
+                ? JSON.stringify({ reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown' })
+                : { reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown' }
+            }
+          });
+        } catch (error) {
+          logger.error(`Error updating status for instance ${instanceId}`, {
+            error: error.message
+          });
+        }
+
+        // Если не нужно переподключаться, удаляем экземпляр из карты
+        if (!shouldReconnect) {
+          this.instances.delete(instanceId);
+        }
+      }
+      else if (connection === 'open') {
+        logger.info(`WhatsApp client connected for instance ${instanceId}`);
+
+        instanceObj.status = 'connected';
+        instanceObj.qrCode = null;
+
+        try {
+          const prisma = dbConnector.getClient();
+
+          // Обновляем статус в базе данных
+          await prisma.instance.update({
+            where: { id: instanceId },
+            data: {
+              status: 'connected',
+              qrCode: null,
+              lastActivity: new Date()
+            }
+          });
+
+          // Логируем подключение
+          await prisma.activityLog.create({
+            data: {
+              instanceId,
+              action: 'connected',
+              details: dbConnector.activeProvider === 'sqlite'
+                ? JSON.stringify({})
+                : {}
+            }
+          });
+        } catch (error) {
+          logger.error(`Error updating status for instance ${instanceId}`, {
+            error: error.message
+          });
+        }
+      }
+      else if (qr) {
+        // Обработка QR-кода
         logger.info(`QR Code received for instance ${instanceId}`);
 
         instanceObj.qrCode = qr;
@@ -165,90 +245,6 @@ class SimplifiedWhatsAppService {
           logger.error(`Error updating QR code for instance ${instanceId}`, {
             error: error.message
           });
-        }
-      }
-
-      // Обработка изменений соединения
-      if (connection) {
-        if (connection === 'close') {
-          const shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
-            lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
-
-          instanceObj.status = lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut
-            ? 'logged_out'
-            : 'disconnected';
-
-          logger.info(`WhatsApp connection closed for instance ${instanceId}`, {
-            reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown',
-            willReconnect: shouldReconnect
-          });
-
-          // Обновляем статус в базе данных
-          try {
-            const prisma = dbConnector.getClient();
-            await prisma.instance.update({
-              where: { id: instanceId },
-              data: {
-                status: instanceObj.status,
-                qrCode: null
-              }
-            });
-
-            // Логируем отключение
-            await prisma.activityLog.create({
-              data: {
-                instanceId,
-                action: 'disconnected',
-                details: dbConnector.activeProvider === 'sqlite'
-                  ? JSON.stringify({ reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown' })
-                  : { reason: lastDisconnect?.error?.output?.payload?.message || 'Unknown' }
-              }
-            });
-          } catch (error) {
-            logger.error(`Error updating status for instance ${instanceId}`, {
-              error: error.message
-            });
-          }
-
-          // Если не нужно переподключаться, удаляем экземпляр из карты
-          if (!shouldReconnect) {
-            this.instances.delete(instanceId);
-          }
-        }
-        else if (connection === 'open') {
-          logger.info(`WhatsApp client connected for instance ${instanceId}`);
-
-          instanceObj.status = 'connected';
-          instanceObj.qrCode = null;
-
-          try {
-            const prisma = dbConnector.getClient();
-
-            // Обновляем статус в базе данных
-            await prisma.instance.update({
-              where: { id: instanceId },
-              data: {
-                status: 'connected',
-                qrCode: null,
-                lastActivity: new Date()
-              }
-            });
-
-            // Логируем подключение
-            await prisma.activityLog.create({
-              data: {
-                instanceId,
-                action: 'connected',
-                details: dbConnector.activeProvider === 'sqlite'
-                  ? JSON.stringify({})
-                  : {}
-              }
-            });
-          } catch (error) {
-            logger.error(`Error updating status for instance ${instanceId}`, {
-              error: error.message
-            });
-          }
         }
       }
     });
