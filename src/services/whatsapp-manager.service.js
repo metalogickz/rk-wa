@@ -295,8 +295,120 @@ class WhatsAppManager {
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      // Обработка QR-кода
-      if (qr) {
+
+
+
+      // Обработка изменений соединения
+      if (connection === 'close' && lastDisconnect) {
+        // Определяем причину разрыва соединения
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const reason = lastDisconnect?.error?.output?.payload?.message || 'Unknown';
+
+        // Определяем, нужно ли пытаться переподключиться автоматически
+        // Стандартная логика для shouldReconnect
+        let shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
+          statusCode !== DisconnectReason.loggedOut;
+
+        // Дополнительная логика: всегда пытаемся переподключиться при ошибке "Connection Failure"
+        if (reason === 'Connection Failure') {
+          shouldReconnect = true;
+          logger.info(`Force reconnect enabled for Connection Failure in instance ${instanceId}`);
+        }
+
+        // Обновляем статус в объекте
+        instanceObj.status = statusCode === DisconnectReason.loggedOut ? 'logged_out' : 'disconnected';
+
+        logger.info(`WhatsApp connection closed for instance ${instanceId}`, {
+          reason: reason,
+          willReconnect: shouldReconnect
+        });
+
+        // Обновляем статус в базе данных
+        try {
+          await prisma.instance.update({
+            where: { id: instanceId },
+            data: {
+              status: instanceObj.status,
+              qrCode: null  // Очищаем QR-код при отключении
+            }
+          });
+
+          // Логируем отключение
+          await prisma.activityLog.create({
+            data: {
+              instanceId,
+              action: 'disconnected',
+              details: dbConnector.activeProvider === 'sqlite'
+                ? JSON.stringify({ reason: reason })
+                : { reason: reason }
+            }
+          });
+        } catch (error) {
+          logger.error(`Error updating status for instance ${instanceId}`, {
+            error: error.message
+          });
+        }
+
+        // Если нужно переподключиться, делаем это после задержки
+        if (shouldReconnect) {
+          // Увеличиваем задержку до 10 секунд для более стабильного переподключения
+          setTimeout(() => {
+            logger.info(`Attempting to reconnect instance ${instanceId}`);
+
+            // Полный перезапуск инстанса
+            this.instances.delete(instanceId); // Удаляем старый инстанс из карты
+
+            // Инициализируем инстанс заново
+            this.initInstance(instanceId).catch(error => {
+              logger.error(`Error reinitializing instance ${instanceId}`, {
+                error: error.message
+              });
+            });
+          }, 10000);
+        } else {
+          // Если не нужно переподключаться, удаляем экземпляр из карты
+          this.instances.delete(instanceId);
+        }
+      }
+      else if (connection === 'open') {
+        logger.info(`WhatsApp client connected for instance ${instanceId}`);
+
+        // Сбрасываем счетчик попыток генерации QR
+        instanceObj.qrGenerationAttempts = 0;
+
+        // Обновляем статус
+        instanceObj.status = 'connected';
+        instanceObj.qrCode = null;  // Очищаем QR-код при подключении
+
+        try {
+          // Обновляем статус в базе данных
+          await prisma.instance.update({
+            where: { id: instanceId },
+            data: {
+              status: 'connected',
+              qrCode: null,
+              lastActivity: new Date()
+            }
+          });
+
+          // Логируем подключение
+          await prisma.activityLog.create({
+            data: {
+              instanceId,
+              action: 'connected',
+              details: dbConnector.activeProvider === 'sqlite'
+                ? JSON.stringify({})
+                : {}
+            }
+          });
+        } catch (error) {
+          logger.error(`Error updating status for instance ${instanceId}`, {
+            error: error.message
+          });
+        }
+      }
+      else if (qr) {
+        // Обработка QR-кода
         // Увеличиваем счетчик попыток генерации QR
         instanceObj.qrGenerationAttempts = (instanceObj.qrGenerationAttempts || 0) + 1;
 
@@ -330,118 +442,6 @@ class WhatsAppManager {
           logger.error(`Error updating QR code for instance ${instanceId}`, {
             error: error.message
           });
-        }
-      }
-
-      // Обработка изменений соединения
-      if (connection) {
-        if (connection === 'close') {
-          // Определяем причину разрыва соединения
-          const statusCode = lastDisconnect?.error?.output?.statusCode;
-          const reason = lastDisconnect?.error?.output?.payload?.message || 'Unknown';
-
-          // Определяем, нужно ли пытаться переподключиться автоматически
-          // Стандартная логика для shouldReconnect
-          let shouldReconnect = (lastDisconnect?.error instanceof Boom) &&
-            statusCode !== DisconnectReason.loggedOut;
-
-          // Дополнительная логика: всегда пытаемся переподключиться при ошибке "Connection Failure"
-          if (reason === 'Connection Failure') {
-            shouldReconnect = true;
-            logger.info(`Force reconnect enabled for Connection Failure in instance ${instanceId}`);
-          }
-
-          // Обновляем статус в объекте
-          instanceObj.status = statusCode === DisconnectReason.loggedOut ? 'logged_out' : 'disconnected';
-
-          logger.info(`WhatsApp connection closed for instance ${instanceId}`, {
-            reason: reason,
-            willReconnect: shouldReconnect
-          });
-
-          // Обновляем статус в базе данных
-          try {
-            await prisma.instance.update({
-              where: { id: instanceId },
-              data: {
-                status: instanceObj.status,
-                qrCode: null  // Очищаем QR-код при отключении
-              }
-            });
-
-            // Логируем отключение
-            await prisma.activityLog.create({
-              data: {
-                instanceId,
-                action: 'disconnected',
-                details: dbConnector.activeProvider === 'sqlite'
-                  ? JSON.stringify({ reason: reason })
-                  : { reason: reason }
-              }
-            });
-          } catch (error) {
-            logger.error(`Error updating status for instance ${instanceId}`, {
-              error: error.message
-            });
-          }
-
-          // Если нужно переподключиться, делаем это после задержки
-          if (shouldReconnect) {
-            // Увеличиваем задержку до 10 секунд для более стабильного переподключения
-            setTimeout(() => {
-              logger.info(`Attempting to reconnect instance ${instanceId}`);
-
-              // Полный перезапуск инстанса
-              this.instances.delete(instanceId); // Удаляем старый инстанс из карты
-
-              // Инициализируем инстанс заново
-              this.initInstance(instanceId).catch(error => {
-                logger.error(`Error reinitializing instance ${instanceId}`, {
-                  error: error.message
-                });
-              });
-            }, 10000);
-          } else {
-            // Если не нужно переподключаться, удаляем экземпляр из карты
-            this.instances.delete(instanceId);
-          }
-        }
-        else if (connection === 'open') {
-          logger.info(`WhatsApp client connected for instance ${instanceId}`);
-
-          // Сбрасываем счетчик попыток генерации QR
-          instanceObj.qrGenerationAttempts = 0;
-
-          // Обновляем статус
-          instanceObj.status = 'connected';
-          instanceObj.qrCode = null;  // Очищаем QR-код при подключении
-
-          try {
-            // Обновляем статус в базе данных
-            await prisma.instance.update({
-              where: { id: instanceId },
-              data: {
-                status: 'connected',
-                qrCode: null,
-                lastActivity: new Date()
-              }
-            });
-
-            // Логируем подключение
-            await prisma.activityLog.create({
-              data: {
-                instanceId,
-                action: 'connected',
-                details: dbConnector.activeProvider === 'sqlite'
-                  ? JSON.stringify({})
-                  : {}
-              }
-            });
-          } catch (error) {
-            logger.error(`Error updating status for instance ${instanceId}`, {
-              error: error.message
-            });
-          }
         }
       }
     });
