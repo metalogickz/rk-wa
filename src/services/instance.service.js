@@ -422,9 +422,7 @@ class InstanceService {
         if (!qrCode) {
           logger.info(`QR code still not available after first attempt, waiting more for ${instanceId}`);
           await new Promise(resolve => setTimeout(resolve, 5000));
-          // Не пробрасываем ошибку наружу, если QR ещё не готов — позволяем контроллеру вернуть 202
-          const secondAttempt = whatsappManager.getInstanceQrCode(instanceId);
-          qrCode = secondAttempt && secondAttempt.error ? null : secondAttempt;
+          qrCode = whatsappManager.getInstanceQrCode(instanceId);
         }
 
         // Если QR-код все еще не доступен, возвращаем статус генерации
