@@ -1026,7 +1026,8 @@ class WhatsAppManager {
       // Удаляем инстанс из карты даже при ошибке
       this.instances.delete(instanceId);
 
-      throw error;
+      // Не пробрасываем ошибку дальше, чтобы не блокировать процедуры переподключения
+      return;
     }
   }
 
@@ -1667,7 +1668,7 @@ class WhatsAppManager {
         }
       }
 
-      // Находим инстансы с уже истекшей авторизацией
+      // Находим инстансы с уже истекшей авторизации
       const expiredInstances = await prisma.instance.findMany({
         where: {
           status: 'connected',
