@@ -960,8 +960,13 @@ class WhatsAppManager {
    * @param {string} instanceId - ID инстанса
    * @returns {string|null} QR-код
    */
-  getInstanceQrCode(instanceId) {
+  getInstanceQrCode(instanceId, recursive = false) {
     const instanceObj = this.instances.get(instanceId);
+
+    if (recursive && !instanceObj?.qrCode) {
+      return { error: 'QR code not available' };
+    }
+
     return instanceObj ? instanceObj.qrCode : null;
   }
 
