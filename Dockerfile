@@ -1,44 +1,11 @@
 FROM node:20-slim
 
 # Установка необходимых зависимостей для baileys и git
-# RUN apt-get update && apt-get install -y \
-#     wget \
-#     gnupg \
-#     ca-certificates \
-#     fonts-liberation \
-#     libatk-bridge2.0-0 \
-#     libatk1.0-0 \
-#     libcairo2 \
-#     libcups2 \
-#     libdbus-1-3 \
-#     libexpat1 \
-#     libfontconfig1 \
-#     libgbm1 \
-#     libglib2.0-0 \
-#     libgtk-3-0 \
-#     libnspr4 \
-#     libnss3 \
-#     libpango-1.0-0 \
-#     libpangocairo-1.0-0 \
-#     libx11-6 \
-#     libx11-xcb1 \
-#     libxcb1 \
-#     libxcomposite1 \
-#     libxcursor1 \
-#     libxdamage1 \
-#     libxext6 \
-#     libxfixes3 \
-#     libxi6 \
-#     libxrandr2 \
-#     libxrender1 \
-#     libxss1 \
-#     libxtst6 \
-#     xdg-utils \
-#     curl \
-#     git \
-#     sqlite3 \
-#     netcat-openbsd \
-#     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Рабочая директория приложения
 WORKDIR /usr/src/app
@@ -131,7 +98,7 @@ RUN echo '#!/bin/bash\n\
   # Устанавливаем sqlite3, если он не установлен (для диагностики)\n\
   if ! [ -x "$(command -v sqlite3)" ]; then\n\
   echo "Installing sqlite3 for diagnostics..."\n\
-  apt-get update && apt-get install -y sqlite3\n\
+  apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*\n\
   fi\n\
   \n\
   # Запускаем основное приложение\n\
