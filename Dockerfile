@@ -1,13 +1,11 @@
-FROM node:20-slim
+FROM node:20-alpine
 
-# Install build/runtime tools once, keep image lean
-ARG DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Устанавливаем необходимые утилиты через apk (быстро и надежно)
+RUN apk add --no-cache \
     git \
     wget \
-    sqlite3 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    sqlite \
+    openssl
 
 # Рабочая директория приложения
 WORKDIR /usr/src/app
@@ -41,25 +39,16 @@ VOLUME ["/usr/src/app/instances", "/usr/src/app/uploads", "/usr/src/app/logs", "
 # Порт приложения
 EXPOSE 3000
 
-# Создаем скрипт для запуска (убран apt install на старте)
-RUN echo '#!/bin/bash\n\
-  # Создаем директорию для данных\n\
+# Создаем скрипт запуска (на Alpine используем /bin/sh)
+RUN echo '#!/bin/sh\n\
   mkdir -p /usr/src/app/data\n\
   chmod -R 777 /usr/src/app/data\n\
-  \n\
-  # Создаем директорию для публичных файлов\n\
-  mkdir -p /usr/src/app/src/public\n\
-  mkdir -p /usr/src/app/src/public/css\n\
-  mkdir -p /usr/src/app/src/public/js\n\
-  \n\
-  # Выводим информацию о переменных окружения\n\
+  mkdir -p /usr/src/app/src/public /usr/src/app/src/public/css /usr/src/app/src/public/js\n\
   echo "Current environment variables:"\n\
   echo "DATABASE_PROVIDER: ${DATABASE_PROVIDER}"\n\
   echo "DATABASE_URL: ${DATABASE_URL}"\n\
   echo "SQLITE_DATABASE_URL: ${SQLITE_DATABASE_URL}"\n\
   echo "ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}"\n\
-  \n\
-  # Инициализируем базу данных SQLite\n\
   if [ "$DATABASE_PROVIDER" = "sqlite" ]; then\n\
     echo "Initializing SQLite database..."\n\
     node scripts/init-sqlite.js\n\
@@ -69,10 +58,9 @@ RUN echo '#!/bin/bash\n\
     ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-"Admin"} \\\n\
     ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-"User"} \\\n\
     node scripts/init-admin.js\n\
-    echo "Checking if the user was created in SQLite:"\n\
-    if [ -f "$SQLITE_DATABASE_URL" ]; then\n\
+    if [ -n "$SQLITE_DATABASE_URL" ] && [ -f "$SQLITE_DATABASE_URL" ]; then\n\
       echo "SQLite database exists at: $SQLITE_DATABASE_URL"\n\
-      if [ -x "$(command -v sqlite3)" ]; then\n\
+      if command -v sqlite3 >/dev/null 2>&1; then\n\
         echo "Checking users table with sqlite3:"\n\
         sqlite3 $SQLITE_DATABASE_URL "SELECT id, email, firstName, lastName FROM users;"\n\
       else\n\
@@ -90,11 +78,9 @@ RUN echo '#!/bin/bash\n\
     ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-"User"} \\\n\
     node scripts/init-admin.js\n\
   fi\n\
-  \n\
-  # Запускаем основное приложение\n\
   echo "Starting main application..."\n\
   exec node src/app.js\n\
-  ' > /usr/src/app/start.sh && chmod +x /usr/src/app/start.sh
+' > /usr/src/app/start.sh && chmod +x /usr/src/app/start.sh
 
-# Запуск приложения через shell скрипт
-CMD ["/bin/bash", "/usr/src/app/start.sh"]
+# На Alpine используем /bin/sh
+CMD ["/bin/sh", "/usr/src/app/start.sh"]
