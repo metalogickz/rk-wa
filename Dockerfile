@@ -1,9 +1,11 @@
 FROM node:20-slim
 
-# Установка необходимых зависимостей для baileys и git
-RUN apt-get update && apt-get install -y \
+# Install build/runtime tools once, keep image lean
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     wget \
+    sqlite3 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,7 +41,7 @@ VOLUME ["/usr/src/app/instances", "/usr/src/app/uploads", "/usr/src/app/logs", "
 # Порт приложения
 EXPOSE 3000
 
-# Создаем скрипт для запуска, который будет инициализировать базу данных и создавать администратора
+# Создаем скрипт для запуска (убран apt install на старте)
 RUN echo '#!/bin/bash\n\
   # Создаем директорию для данных\n\
   mkdir -p /usr/src/app/data\n\
@@ -59,46 +61,34 @@ RUN echo '#!/bin/bash\n\
   \n\
   # Инициализируем базу данных SQLite\n\
   if [ "$DATABASE_PROVIDER" = "sqlite" ]; then\n\
-  echo "Initializing SQLite database..."\n\
-  node scripts/init-sqlite.js\n\
-  \n\
-  # После инициализации базы данных создаем администратора\n\
-  echo "Creating default admin user for SQLite..."\n\
-  ADMIN_EMAIL=${ADMIN_EMAIL:-"admin@example.com"} \\\n\
-  ADMIN_PASSWORD=${ADMIN_PASSWORD:-"admin123"} \\\n\
-  ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-"Admin"} \\\n\
-  ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-"User"} \\\n\
-  node scripts/init-admin.js\n\
-  \n\
-  # Проверяем, был ли создан пользователь\n\
-  echo "Checking if the user was created in SQLite:"\n\
-  if [ -f "$SQLITE_DATABASE_URL" ]; then\n\
-  echo "SQLite database exists at: $SQLITE_DATABASE_URL"\n\
-  if [ -x "$(command -v sqlite3)" ]; then\n\
-  echo "Checking users table with sqlite3:"\n\
-  sqlite3 $SQLITE_DATABASE_URL "SELECT id, email, firstName, lastName FROM users;"\n\
+    echo "Initializing SQLite database..."\n\
+    node scripts/init-sqlite.js\n\
+    echo "Creating default admin user for SQLite..."\n\
+    ADMIN_EMAIL=${ADMIN_EMAIL:-"admin@example.com"} \\\n\
+    ADMIN_PASSWORD=${ADMIN_PASSWORD:-"admin123"} \\\n\
+    ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-"Admin"} \\\n\
+    ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-"User"} \\\n\
+    node scripts/init-admin.js\n\
+    echo "Checking if the user was created in SQLite:"\n\
+    if [ -f "$SQLITE_DATABASE_URL" ]; then\n\
+      echo "SQLite database exists at: $SQLITE_DATABASE_URL"\n\
+      if [ -x "$(command -v sqlite3)" ]; then\n\
+        echo "Checking users table with sqlite3:"\n\
+        sqlite3 $SQLITE_DATABASE_URL "SELECT id, email, firstName, lastName FROM users;"\n\
+      else\n\
+        echo "sqlite3 not found, cannot check database content"\n\
+      fi\n\
+    else\n\
+      echo "SQLite database file not found at $SQLITE_DATABASE_URL"\n\
+    fi\n\
   else\n\
-  echo "sqlite3 not found, cannot check database content"\n\
-  fi\n\
-  else\n\
-  echo "SQLite database file not found at $SQLITE_DATABASE_URL"\n\
-  fi\n\
-
-  else\n\
-  echo "Using default database provider..."\n\
-  # Создаем администратора по умолчанию\n\
-  echo "Creating default admin user..."\n\
-  ADMIN_EMAIL=${ADMIN_EMAIL:-"admin@example.com"} \\\n\
-  ADMIN_PASSWORD=${ADMIN_PASSWORD:-"admin123"} \\\n\
-  ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-"Admin"} \\\n\
-  ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-"User"} \\\n\
-  node scripts/init-admin.js\n\
-  fi\n\
-  \n\
-  # Устанавливаем sqlite3, если он не установлен (для диагностики)\n\
-  if ! [ -x "$(command -v sqlite3)" ]; then\n\
-  echo "Installing sqlite3 for diagnostics..."\n\
-  apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*\n\
+    echo "Using default database provider..."\n\
+    echo "Creating default admin user..."\n\
+    ADMIN_EMAIL=${ADMIN_EMAIL:-"admin@example.com"} \\\n\
+    ADMIN_PASSWORD=${ADMIN_PASSWORD:-"admin123"} \\\n\
+    ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME:-"Admin"} \\\n\
+    ADMIN_LAST_NAME=${ADMIN_LAST_NAME:-"User"} \\\n\
+    node scripts/init-admin.js\n\
   fi\n\
   \n\
   # Запускаем основное приложение\n\
