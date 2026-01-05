@@ -645,6 +645,7 @@ class WhatsAppManager {
           data: {
             messageId: message.key.id,
             from,
+            senderPn: message.key.senderPn,  // Real phone number for LID messages
             body: messageContent,
             type: messageType,
             timestamp: message.messageTimestamp,

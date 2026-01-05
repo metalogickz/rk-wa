@@ -24,6 +24,7 @@ services:
       - ./uploads:/usr/src/app/uploads
       - ./logs:/usr/src/app/logs
       - ./data:/usr/src/app/data
+      - ./src:/usr/src/app/src:ro
 
     networks:
       - whatsapp-network
